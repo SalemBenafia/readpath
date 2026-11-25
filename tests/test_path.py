@@ -1,0 +1,139 @@
+"""Tests for readpath.path on a pack whose answers are obvious (see conftest.make_path_pack)."""
+
+import pytest
+
+from readpath import path
+
+
+def ids(rows: list[dict]) -> list[str]:
+    """Return the ids of rows, in order."""
+    return [r["id"] for r in rows]
+
+
+# ---------- foundations ----------
+
+
+def test_foundations_depth3_ranks_by_routes_then_cited_by(path_conn) -> None:
+    """F has 3 routes; the rest have 1 and follow cited_by (D 30, B 20, A 10, E 5)."""
+    rows = path.foundations(path_conn, "T", depth=3, limit=10)
+    assert ids(rows) == ["F", "D", "B", "A", "E"]
+    assert [r["routes"] for r in rows] == [3, 1, 1, 1, 1]
+    assert set(rows[0]) == {"id", "title", "year", "cited_by", "routes"}
+
+
+def test_foundations_depth2_does_not_reach_three_hops(path_conn) -> None:
+    """E is 3 hops from T, so depth 2 leaves it out."""
+    assert ids(path.foundations(path_conn, "T", depth=2, limit=10)) == ["F", "D", "B", "A"]
+
+
+def test_foundations_limit_and_already_read(path_conn) -> None:
+    """limit caps the list and already-read papers are skipped."""
+    assert ids(path.foundations(path_conn, "T", limit=2)) == ["F", "D"]
+    assert ids(path.foundations(path_conn, "T", limit=2, already_read=["F"])) == ["D", "B"]
+
+
+def test_foundations_of_leaf_is_empty(path_conn) -> None:
+    """A paper that cites nothing in the pack has no foundations."""
+    assert path.foundations(path_conn, "E") == []
+
+
+def test_unsupported_depth_raises(path_conn) -> None:
+    """Only depths with a constant (2, 3) are allowed."""
+    with pytest.raises(ValueError):
+        path.foundations(path_conn, "T", depth=4)
+    with pytest.raises(ValueError):
+        path.why_chains(path_conn, "T", "F", depth=1)
+
+
+# ---------- why chains ----------
+
+
+def test_why_chains_shortest_first(path_conn) -> None:
+    """The direct citation comes first, then the two 3-node chains via A and B."""
+    chains = path.why_chains(path_conn, "T", "F")
+    assert [ids(c) for c in chains][0] == ["T", "F"]
+    assert sorted(ids(c) for c in chains[1:]) == [["T", "A", "F"], ["T", "B", "F"]]
+    assert chains[0][1] == {"id": "F", "title": "Paper F", "year": 2010}
+
+
+def test_why_chains_respects_depth(path_conn) -> None:
+    """E needs 3 hops: found at depth 3, not at depth 2."""
+    assert [ids(c) for c in path.why_chains(path_conn, "T", "E", depth=3)] == [["T", "A", "D", "E"]]
+    assert path.why_chains(path_conn, "T", "E", depth=2) == []
+
+
+# ---------- why text (pure) ----------
+
+
+def node(pid: str, title: str, year: int | None) -> dict:
+    """Make a chain node."""
+    return {"id": pid, "title": title, "year": year}
+
+
+def test_why_text_direct() -> None:
+    """A 2-node chain is a direct citation; routes > 1 are mentioned."""
+    chain = [node("T", "Target", 2020), node("F", "Found", 2010)]
+    assert path.why_text(chain, 1) == "Your paper cites it directly."
+    assert path.why_text(chain, 3) == "Your paper cites it directly. Reached by 3 citation routes."
+
+
+def test_why_text_multi_hop_with_truncation() -> None:
+    """Middle papers are named with year, and long titles are shortened."""
+    long_title = "Neural Machine Translation by Jointly Learning to Align and Translate"
+    chain = [node("T", "Target", 2017), node("M", long_title, 2014), node("F", "Found", 1997)]
+    assert path.why_text(chain, 12) == (
+        "Your paper -> Neural Machine Translation by Jointly Le... (2014) -> this paper."
+        " Reached by 12 citation routes."
+    )
+    chain = [node("T", "T", 2020), node("A", "Short", None), node("B", "Other", 2001), node("F", "F", 1990)]
+    assert path.why_text(chain, 1) == (
+        "Your paper -> Short (n.d.) -> Other (2001) -> this paper. Reached by 1 citation route."
+    )
+
+
+def test_why_text_without_chain() -> None:
+    """No chain means no citation link."""
+    assert path.why_text([], 0) == "Not linked by citations in this pack."
+
+
+# ---------- authors and topics ----------
+
+
+def test_authors_to_follow(path_conn) -> None:
+    """Ada wrote both F and D, so she comes first."""
+    authors = path.authors_to_follow(path_conn, ["F", "D", "A"])
+    assert authors[0] == {"author": "Ada", "papers": 2}
+    assert authors[1] == {"author": "Alan", "papers": 1}
+    assert path.authors_to_follow(path_conn, []) == []
+
+
+def test_topics_in_path_sums_primary_and_secondary(path_conn) -> None:
+    """cs.CL is primary for F and D (1.0 + 1.0); cs.LG is secondary for D (0.5)."""
+    topics = path.topics_in_path(path_conn, ["F", "D", "E"])
+    assert topics == [
+        {"topic": "cs.CL", "score": 2.0, "papers": 2},
+        {"topic": "cs.LG", "score": 0.5, "papers": 1},
+    ]
+    assert path.topics_in_path(path_conn, []) == []
+
+
+# ---------- reading path ----------
+
+
+def test_reading_path_structure(path_conn) -> None:
+    """The full result has target, steps with chains and why, authors and topics."""
+    result = path.reading_path(path_conn, "T", size=3)
+    assert result["target"]["id"] == "T"
+    assert ids(result["steps"]) == ["F", "D", "B"]
+    first = result["steps"][0]
+    assert set(first) == {"id", "title", "year", "cited_by", "routes", "chains", "why"}
+    assert first["why"] == "Your paper cites it directly. Reached by 3 citation routes."
+    assert result["steps"][1]["why"] == "Your paper -> Paper A (2015) -> this paper. Reached by 1 citation route."
+    assert result["authors"][0] == {"author": "Ada", "papers": 2}
+    assert result["topics"][0]["topic"] == "cs.CL"
+
+
+def test_reading_path_unknown_target(path_conn) -> None:
+    """A paper that is not in the pack raises ValueError."""
+    with pytest.raises(ValueError):
+        path.reading_path(path_conn, "missing")

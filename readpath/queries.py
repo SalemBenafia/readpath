@@ -87,6 +87,68 @@ RETURN p.id AS id, p.title AS title, p.year AS year, score
 ORDER BY score DESC, id
 """
 
+# ---------- reading paths ----------
+# Variable-length bounds cannot be parameters, so there is one constant per depth.
+
+FOUNDATIONS_D2 = """
+MATCH (t:Paper {id: $target})-[:CITES*1..2]->(f:Paper)
+WHERE NOT f.id IN $already_read AND f.id <> $target
+WITH f, count(*) AS routes
+RETURN f.id AS id, f.title AS title, f.year AS year, f.citedBy AS cited_by, routes
+ORDER BY routes DESC, cited_by DESC, id
+LIMIT $limit
+"""
+
+FOUNDATIONS_D3 = """
+MATCH (t:Paper {id: $target})-[:CITES*1..3]->(f:Paper)
+WHERE NOT f.id IN $already_read AND f.id <> $target
+WITH f, count(*) AS routes
+RETURN f.id AS id, f.title AS title, f.year AS year, f.citedBy AS cited_by, routes
+ORDER BY routes DESC, cited_by DESC, id
+LIMIT $limit
+"""
+
+WHY_CHAINS_D2 = """
+MATCH path = (t:Paper {id: $target})-[:CITES*1..2]->(f:Paper {id: $foundation})
+RETURN [n IN nodes(path) | {id: n.id, title: n.title, year: n.year}] AS chain
+ORDER BY length(path) ASC
+LIMIT 3
+"""
+
+WHY_CHAINS_D3 = """
+MATCH path = (t:Paper {id: $target})-[:CITES*1..3]->(f:Paper {id: $foundation})
+RETURN [n IN nodes(path) | {id: n.id, title: n.title, year: n.year}] AS chain
+ORDER BY length(path) ASC
+LIMIT 3
+"""
+
+FOUNDATIONS = {2: FOUNDATIONS_D2, 3: FOUNDATIONS_D3}
+WHY_CHAINS = {2: WHY_CHAINS_D2, 3: WHY_CHAINS_D3}
+
+AUTHORS_TO_FOLLOW = """
+MATCH (f:Paper)-[:BY]->(a:Author)
+WHERE f.id IN $ids
+RETURN a.name AS author, count(DISTINCT f) AS papers
+ORDER BY papers DESC, author
+LIMIT 5
+"""
+
+# A primary arXiv category counts 1.0, a secondary one 0.5.
+TOPICS_IN_PATH = """
+MATCH (f:Paper)-[r:ABOUT]->(t:Topic)
+WHERE f.id IN $ids
+RETURN t.id AS topic,
+       sum(CASE WHEN r.primary THEN 1.0 ELSE 0.5 END) AS score,
+       count(DISTINCT f) AS papers
+ORDER BY score DESC, topic
+LIMIT 5
+"""
+
+PAPER_BY_ID = """
+MATCH (p:Paper {id: $id})
+RETURN p.id AS id, p.title AS title, p.year AS year, p.citedBy AS cited_by, p.arxiv AS arxiv
+"""
+
 # ---------- reads ----------
 
 COUNT_NODES_BY_LABEL = """

@@ -57,11 +57,36 @@ def toy_embeddings() -> dict[str, list[float]]:
     return make_embeddings(make_pack())
 
 
-@pytest.fixture(scope="session")
-def toy_store_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """The fake pack written once to a temp .rl store."""
-    path = tmp_path_factory.mktemp("packs") / "toy.rl"
-    pack = make_pack()
+def make_path_pack() -> dict:
+    """Return a pack whose reading path for T is obvious.
+
+    T -> A, T -> B, T -> F;  A -> F, B -> F;  A -> D, D -> E
+    From T: F has 3 routes (direct, via A, via B); D, B, A, E have 1 each and are ordered by
+    cited_by (30, 20, 10, 5). E is 3 hops away, so depth 2 does not reach it.
+    """
+    ada = {"id": "ada", "name": "Ada"}
+
+    def p(pid: str, year: int, cited_by: int, authors: list, primary: str | None = None,
+          categories: list[str] = ()) -> dict:
+        return {"id": pid, "title": f"Paper {pid}", "year": year, "cited_by": cited_by,
+                "arxiv": None, "doi": None, "authors": authors, "level": 1, "abstract": "",
+                "primary_category": primary, "categories": list(categories)}
+
+    papers = [
+        {**p("T", 2020, 1, []), "level": 0},
+        p("A", 2015, 10, [{"id": "a1", "name": "Alan"}]),
+        p("B", 2016, 20, [{"id": "b1", "name": "Bea"}]),
+        p("F", 2010, 100, [ada], "cs.CL", ["cs.CL"]),
+        p("D", 2012, 30, [ada], "cs.CL", ["cs.CL", "cs.LG"]),
+        p("E", 2005, 5, []),
+    ]
+    edges = [["T", "A"], ["T", "B"], ["T", "F"], ["A", "F"], ["B", "F"], ["A", "D"], ["D", "E"]]
+    return {"name": "paths", "seeds": ["T"], "built_at": "2026-11-25T00:00:00+00:00",
+            "papers": papers, "edges": edges}
+
+
+def _write_store(path: Path, pack: dict) -> Path:
+    """Write a pack with random embeddings to a new store at path."""
     conn = store.open_store(path)
     try:
         store.create_schema(conn)
@@ -69,6 +94,26 @@ def toy_store_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     finally:
         conn.close()
     return path
+
+
+@pytest.fixture(scope="session")
+def toy_store_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The fake pack written once to a temp .rl store."""
+    return _write_store(tmp_path_factory.mktemp("packs") / "toy.rl", make_pack())
+
+
+@pytest.fixture(scope="session")
+def path_store_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The reading-path pack written once to a temp .rl store."""
+    return _write_store(tmp_path_factory.mktemp("packs") / "paths.rl", make_path_pack())
+
+
+@pytest.fixture
+def path_conn(path_store_path: Path):
+    """A read-only connection to the reading-path pack, closed after the test."""
+    conn = store.open_store(path_store_path, read_only=True)
+    yield conn
+    conn.close()
 
 
 @pytest.fixture
