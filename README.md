@@ -33,6 +33,14 @@ match is used). `--read id1,id2` skips papers you have already read.
 - The embedding model (all-MiniLM-L6-v2) is downloaded once on first use. Without internet,
   search falls back to full-text only, and exact titles still work.
 
+## Ask Claude Code about the pack (MCP)
+
+The repo's `.mcp.json` registers a `readpath` MCP server. It runs
+`relate serve --mcp stdio` on `data/packs/transformers.rl`, read-only.
+To use it, have `relate` on your PATH and start `claude` in the repo folder. Approve the
+"readpath" project server when Claude Code asks, then type `/mcp` to check that it is
+connected. The server has two tools, `get_schema` and `read_cypher`, and it cannot write.
+
 ## Rebuilding or adding a pack
 
 ```bash

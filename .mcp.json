@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "readpath": {
+      "type": "stdio",
+      "command": "relate",
+      "args": [
+        "serve",
+        "--mcp",
+        "stdio",
+        "--database",
+        "./data/packs/transformers.rl",
+        "--read-only"
+      ],
+      "env": {}
+    }
+  }
+}
