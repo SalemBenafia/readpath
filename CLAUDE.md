@@ -17,6 +17,7 @@ showing the citation chain. Built for the Relate by Neo4j Hackathon
 - networkx (reading order), Streamlit + streamlit-agraph (UI), pytest (tests)
 
 ## Layout
+- readpath/http.py      shared fetch(): disk cache in data/raw/ + retry/backoff on 429/5xx
 - readpath/s2.py        Semantic Scholar client + cache in data/raw/
 - readpath/arxiv.py     arXiv client (abstracts, categories) + cache in data/raw/
 - readpath/store.py     open stores, create schema, write packs

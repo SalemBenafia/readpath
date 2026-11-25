@@ -1,0 +1,35 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<feed xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/" xmlns:arxiv="http://arxiv.org/schemas/atom" xmlns="http://www.w3.org/2005/Atom">
+  <id>https://arxiv.org/api/iQjiGNBlaXZKZKyUSkdx5eS3jhA</id>
+  <title>arXiv Query: search_query=&amp;id_list=1706.03762,hep-th/9711200&amp;start=0&amp;max_results=2</title>
+  <opensearch:totalResults>2</opensearch:totalResults>
+  <entry>
+    <id>http://arxiv.org/abs/hep-th/9711200v3</id>
+    <title>The Large N Limit of Superconformal Field Theories and Supergravity</title>
+    <summary>  We show that the large $N$ limit of certain conformal field theories in various dimensions include in their Hilbert space a sector describing supergravity.</summary>
+    <category term="hep-th" scheme="http://arxiv.org/schemas/atom"/>
+    <arxiv:primary_category term="hep-th"/>
+    <author>
+      <name>Juan M. Maldacena</name>
+    </author>
+  </entry>
+  <entry>
+    <id>http://arxiv.org/abs/1706.03762v7</id>
+    <title>Attention Is All You Need</title>
+    <summary>The dominant sequence transduction models are based on complex recurrent or
+  convolutional neural networks in an encoder-decoder configuration.   We propose
+  a new simple network architecture, the Transformer.
+</summary>
+    <category term="cs.CL" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.LG" scheme="http://arxiv.org/schemas/atom"/>
+    <arxiv:primary_category term="cs.CL"/>
+    <author>
+      <name>Ashish Vaswani</name>
+    </author>
+  </entry>
+  <entry>
+    <id>http://arxiv.org/api/errors#incorrect_id_format_for_not-an-id</id>
+    <title>Error</title>
+    <summary>incorrect id format for not-an-id</summary>
+  </entry>
+</feed>
