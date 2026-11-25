@@ -79,7 +79,7 @@ def test_vector_search_finds_identical_vector(toy_conn: Any, toy_embeddings: dic
     assert len(hits) == 3
     assert hits[0]["id"] == "p3" and hits[0]["title"] == "Long Short-Term Memory"
     assert hits[0]["score"] == pytest.approx(1.0, abs=1e-4)
-    assert set(hits[0]) == {"id", "title", "year", "score"}
+    assert set(hits[0]) == {"id", "title", "year", "cited_by", "score"}
 
 
 def test_vector_search_without_model_returns_nothing(toy_conn: Any) -> None:

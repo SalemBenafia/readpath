@@ -41,6 +41,11 @@ class Embedder:
                       "using full-text search only.", file=sys.stderr)
         return self._model
 
+    def load(self) -> bool:
+        """Load the model now (if not loaded yet) and return whether it is available."""
+        self._load()
+        return self.available
+
     def encode(self, text: str) -> list[float] | None:
         """Return 384 floats for text, or None when the model is unavailable."""
         model = self._load()
@@ -66,8 +71,12 @@ def clean_query(text: str) -> str:
 
 
 def _hits(rows: Any) -> list[Hit]:
-    """Turn result rows into {id, title, year, score} dicts."""
-    return [{"id": r["id"], "title": r["title"], "year": r["year"], "score": r["score"]} for r in rows]
+    """Turn result rows into {id, title, year, cited_by, score} dicts."""
+    return [
+        {"id": r["id"], "title": r["title"], "year": r["year"], "cited_by": r["cited_by"],
+         "score": r["score"]}
+        for r in rows
+    ]
 
 
 def vector_search(
@@ -96,7 +105,8 @@ def rrf_fuse(vector_hits: list[Hit], text_hits: list[Hit], k: int = 5) -> list[H
             entry = fused.setdefault(
                 hit["id"],
                 {"id": hit["id"], "title": hit["title"], "year": hit["year"],
-                 "score": 0.0, "vector_rank": None, "text_rank": None},
+                 "cited_by": hit.get("cited_by"), "score": 0.0,
+                 "vector_rank": None, "text_rank": None},
             )
             if entry[key] is None:
                 entry[key] = rank

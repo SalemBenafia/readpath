@@ -1,0 +1,6 @@
+# headless: no first-run email prompt (judges, background runs); open the printed URL yourself.
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false

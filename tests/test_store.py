@@ -3,6 +3,7 @@
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -44,6 +45,18 @@ def test_pack_path_and_list_packs(tmp_path: Path) -> None:
         (tmp_path / name).touch()
     assert store.pack_path("a", tmp_path) == tmp_path / "a.rl"
     assert store.list_packs(tmp_path) == ["a", "b"]
+
+
+def test_pack_summary(toy_conn: Any) -> None:
+    """The summary has the pack name, seed ids and titles, build time and paper count."""
+    info = store.pack_summary(toy_conn)
+    assert info == {
+        "name": "toy",
+        "built_at": "2026-11-25T00:00:00+00:00",
+        "seeds": ["p1"],
+        "seed_titles": ["Attention Is All You Need"],
+        "papers": 5,
+    }
 
 
 def test_write_pack_counts(tmp_path: Path, toy_pack: dict, toy_embeddings: dict) -> None:

@@ -116,6 +116,15 @@ def write_pack(conn: Any, pack: dict[str, Any], embeddings: dict[str, list[float
         conn.autocommit = True
 
 
+def pack_summary(conn: Any) -> dict[str, Any]:
+    """Return the Pack node's name, build time, seeds and seed titles, plus the paper count."""
+    rows = conn.execute(queries.PACK_SUMMARY).data()
+    info = rows[0] if rows else {"name": None, "built_at": None, "seeds": [], "seed_titles": []}
+    papers = conn.execute(queries.COUNT_PAPERS).single()["papers"]
+    return {**info, "seeds": list(info["seeds"] or []), "seed_titles": list(info["seed_titles"] or []),
+            "papers": papers}
+
+
 def store_counts(conn: Any) -> tuple[dict[str, int], dict[str, int]]:
     """Return (nodes per label, relationships per type)."""
     nodes = {r["label"]: r["n"] for r in conn.execute(queries.COUNT_NODES_BY_LABEL)}

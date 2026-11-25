@@ -106,6 +106,26 @@ def find_paper(conn: Any, text: str, embedder: Any = None) -> tuple[Row | None, 
     return (paper(conn, hits[0]["id"]) if hits else None), "search"
 
 
+def find_candidates(conn: Any, text: str, k: int = 5, embedder: Any = None) -> list[Row]:
+    """Return up to k candidate targets: paperId or exact title first, then hybrid-search hits."""
+    text = text.strip()
+    if not text:
+        return []
+    first = paper(conn, text) if PAPER_ID.match(text) else paper_by_title(conn, text)
+    found: list[Row] = []
+    if first is not None:
+        found.append({**_candidate(first), "match": "paperId" if PAPER_ID.match(text) else "title"})
+    for hit in search.hybrid_search(conn, text, k=k, embedder=embedder):
+        if all(hit["id"] != f["id"] for f in found):
+            found.append({**_candidate(hit), "match": "search"})
+    return found[:k]
+
+
+def _candidate(row: Row) -> Row:
+    """Keep the fields a candidate list shows: id, title, year, cited_by."""
+    return {key: row.get(key) for key in ("id", "title", "year", "cited_by")}
+
+
 def reading_path(
     conn: Any, target_id: str, size: int = 6, depth: int = 3, already_read: Iterable[str] = ()
 ) -> dict[str, Any]:

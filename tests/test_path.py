@@ -21,7 +21,7 @@ def test_foundations_depth3_ranks_by_routes_then_cited_by(path_conn: Any) -> Non
     rows = path.foundations(path_conn, "T", depth=3, limit=10)
     assert ids(rows) == ["F", "D", "B", "A", "E"]
     assert [r["routes"] for r in rows] == [3, 1, 1, 1, 1]
-    assert set(rows[0]) == {"id", "title", "year", "cited_by", "routes"}
+    assert set(rows[0]) == {"id", "title", "year", "cited_by", "arxiv", "doi", "routes"}
 
 
 def test_foundations_depth2_does_not_reach_three_hops(path_conn: Any) -> None:
@@ -129,7 +129,7 @@ def test_reading_path_structure(path_conn: Any) -> None:
     assert result["target"]["id"] == "T"
     assert ids(result["steps"]) == ["F", "D", "B"]
     first = result["steps"][0]
-    assert set(first) == {"id", "title", "year", "cited_by", "routes", "chains", "why"}
+    assert set(first) == {"id", "title", "year", "cited_by", "arxiv", "doi", "routes", "chains", "why"}
     assert first["why"] == "Your paper cites it directly. Reached by 3 citation routes."
     assert result["steps"][1]["why"] == "Your paper -> Paper A (2015) -> this paper. Reached by 1 citation route."
     assert result["authors"][0] == {"author": "Ada", "papers": 2}
@@ -162,6 +162,23 @@ def test_find_paper_by_id_and_search_fallback(path_conn: Any, monkeypatch: pytes
     target, how = path.find_paper(path_conn, "something about B")
     assert (target["id"], how) == ("B", "search")
     assert path.find_paper(path_conn, "   ") == (None, "none")
+
+
+def test_find_candidates_exact_title_first(path_conn: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The exact-title paper leads, search hits follow without duplicates, k is respected."""
+    hits = [{"id": i, "title": f"Paper {i}", "year": 2000, "cited_by": 1} for i in ("A", "D", "B")]
+    monkeypatch.setattr(path.search, "hybrid_search", lambda conn, text, k, embedder: hits)
+    found = path.find_candidates(path_conn, "paper d", k=3)
+    assert [(c["id"], c["match"]) for c in found] == [("D", "title"), ("A", "search"), ("B", "search")]
+    assert set(found[0]) == {"id", "title", "year", "cited_by", "match"}
+    assert found[0]["cited_by"] == 30
+    assert path.find_candidates(path_conn, "  ") == []
+
+
+def test_steps_carry_link_ids(path_conn: Any) -> None:
+    """Steps include arxiv and doi so the app can link them."""
+    step = path.reading_path(path_conn, "T", size=1)["steps"][0]
+    assert {"arxiv", "doi"} <= set(step)
 
 
 def test_edges_among(path_conn: Any) -> None:

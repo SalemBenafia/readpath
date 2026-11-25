@@ -26,10 +26,15 @@ showing the citation chain. Built for the Relate by Neo4j Hackathon
 - readpath/path.py      find_paper, foundations, citation chains, authors and topics
 - readpath/order.py     reading order (topological sort, year tie-break)
 - readpath/cli.py       `python -m readpath ...` commands
+- readpath/reading.py   "already read" list in data/my_reading.json (git-ignored, OUTSIDE the packs)
 - build_pack.py         builds data/packs/<name>.rl from seed papers
-- app.py                Streamlit app
+- app.py                Streamlit app: data functions open a read-only connection each and are
+                        @st.cache_data (keyed by pack path + mtime + params); model is @st.cache_resource.
+                        READPATH_PACKS_DIR / READPATH_READING_FILE env vars exist for tests.
+- .streamlit/config.toml  headless (no first-run email prompt), no usage stats
 - tests/                pytest tests, no network; tests/conftest.py builds two tiny packs:
-                        toy (5 papers) and paths (answers are obvious, see make_path_pack)
+                        toy (5 papers) and paths (answers are obvious, see make_path_pack);
+                        tests/test_app.py drives app.py with streamlit.testing AppTest
 - data/packs/*.rl       ready-made topic packs, COMMITTED (judges start here)
 
 ## Graph model
@@ -71,7 +76,7 @@ showing the citation chain. Built for the Relate by Neo4j Hackathon
 ## Commands
 - make setup   create .venv and install everything (CPU-only torch)
 - make test    run pytest
-- make run     start the Streamlit app
+- make run     start the Streamlit app, then open http://localhost:8501
 - python -m readpath path "<title or paperId>" --pack transformers [--depth 2|3] [--size 6] [--read id1,id2]
 - python -m readpath find "<question>" --pack transformers [-k 5]
 - python -m readpath search "<title>"   (live Semantic Scholar lookup, needs network)
