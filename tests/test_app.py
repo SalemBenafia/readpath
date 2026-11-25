@@ -98,6 +98,26 @@ def test_depth_two_drops_three_hop_paper(app: AppTest) -> None:
     assert all("Paper E" not in t for t in card_titles(app))
 
 
+def test_graph_view_and_focus(app: AppTest) -> None:
+    """The graph renders under the path, and the focus selectbox changes the why line."""
+    app.text_input[0].input("Paper T").run()
+    app.radio(key="target").set_value("T").run()
+    focus = app.selectbox(key="focus")
+    assert focus.value == "E"  # step 1 by default
+    assert any("Citation graph" in h.value for h in app.subheader)
+    focus.set_value("F").run()
+    assert not app.exception
+    assert "**Why Paper F:** Your paper cites it directly. Reached by 3 citation routes." in markdown(app)
+
+
+def test_link_opens_reading_path(app: AppTest) -> None:
+    """?paper=<id> pre-fills the search and selects that paper."""
+    app.query_params["paper"] = "T"
+    app.run()
+    assert app.radio(key="target").value == "T"
+    assert card_titles(app)[0].startswith("#### 1. [Paper E]")
+
+
 def test_unknown_search(app: AppTest) -> None:
     """Text that matches nothing shows a warning instead of a radio."""
     app.text_input[0].input("zzzz qqqq").run()

@@ -6,9 +6,12 @@ from pathlib import Path
 from typing import Any
 
 import streamlit as st
+from streamlit_agraph import Config, Edge, Node, agraph
 
-from readpath import path, reading, search, store
+from readpath import graph, path, reading, search, store
 
+GRAPH_WIDTH = 1150
+GRAPH_HEIGHT = 620
 PACKS_DIR = Path(os.environ.get("READPATH_PACKS_DIR") or store.PACKS_DIR)
 READING_FILE = Path(os.environ.get("READPATH_READING_FILE") or reading.READING_FILE)
 S2_URL = "https://www.semanticscholar.org/paper/{}"
@@ -57,6 +60,19 @@ def load_reading_path(
     conn = store.open_store(pack_file, read_only=True)
     try:
         return path.reading_path(conn, target_id, size=size, depth=depth, already_read=already_read)
+    finally:
+        conn.close()
+
+
+@st.cache_data(show_spinner=False)
+def load_graph_links(pack_file: str, mtime: float, ids: tuple[str, ...], step_ids: tuple[str, ...]) -> Row:
+    """Return CITES edges among the shown papers and the top authors of the path steps."""
+    conn = store.open_store(pack_file, read_only=True)
+    try:
+        return {
+            "cites": path.edges_among(conn, ids),
+            "authors": path.author_links(conn, step_ids, limit=graph.MAX_AUTHORS),
+        }
     finally:
         conn.close()
 
@@ -142,8 +158,44 @@ def target_card(number: int, target: Row) -> None:
         links(target)
 
 
-def show_path(result: Row) -> None:
-    """Show the numbered reading path, then authors and topics."""
+def graph_config() -> Config:
+    """Left-to-right hierarchical layout: authors, then papers by year (oldest left), then the target."""
+    return Config(
+        width=GRAPH_WIDTH, height=GRAPH_HEIGHT, directed=True, physics=False, hierarchical=True,
+        direction="LR", sortMethod="directed", levelSeparation=260, nodeSpacing=90, treeSpacing=120,
+        blockShifting=True, edgeMinimization=True, parentCentralization=False,
+        interaction={"hover": True, "tooltipDelay": 120, "navigationButtons": False},
+        edges={"arrows": {"to": {"enabled": True, "scaleFactor": 0.6}},
+               "smooth": {"type": "cubicBezier", "forceDirection": "horizontal", "roundness": 0.4}},
+    )
+
+
+def show_graph(result: Row, pack_file: Path, mtime: float) -> None:
+    """Show the path as a graph, highlighting the chosen paper's citation chains."""
+    steps = result["steps"]
+    if not steps:
+        return
+    st.subheader("Citation graph")
+    numbers = {s["id"]: i for i, s in enumerate(steps, start=1)}
+    titles = {s["id"]: s["title"] for s in steps}
+    focus = st.selectbox("Show why for...", list(numbers), key="focus",
+                         format_func=lambda pid: f"{numbers[pid]}. {titles[pid]}")
+    shown = tuple(sorted(p["id"] for p in graph.paper_nodes(result, focus)))
+    links = load_graph_links(str(pack_file), mtime, shown, tuple(numbers))
+    data = graph.build_graph(result, focus, links["cites"], links["authors"])
+    st.caption(
+        "Navy: your paper · teal: papers to read (numbered) · light teal: papers on the chain · "
+        "orange: authors · arrows point from a paper to what it cites; columns run oldest → newest. "
+        "Hover a node for its full title."
+    )
+    agraph(nodes=[Node(**n) for n in data["nodes"]], edges=[Edge(**e) for e in data["edges"]],
+           config=graph_config())
+    focus_step = steps[numbers[focus] - 1]
+    st.markdown(f"**Why {md(focus_step['title'])}:** {md(focus_step['why'])}")
+
+
+def show_path(result: Row, pack_file: Path, mtime: float) -> None:
+    """Show the numbered reading path, the graph, then authors and topics."""
     steps = result["steps"]
     if not steps:
         st.info("No earlier papers in this pack lead here (or you have read them all).")
@@ -152,6 +204,7 @@ def show_path(result: Row) -> None:
     for i, step in enumerate(steps, start=1):
         step_card(i, step)
     target_card(len(steps) + 1, result["target"])
+    show_graph(result, pack_file, mtime)
     authors_col, topics_col = st.columns(2)
     with authors_col:
         st.subheader("Authors to follow")
@@ -215,7 +268,8 @@ def main() -> None:
     model_ok = get_embedder().available
     if not model_ok:
         st.info("Embedding model not available – using full-text search only.", icon="ℹ️")
-    text = st.text_input("Which paper do you want to understand?",
+    linked = st.query_params.get("paper", "")  # ?paper=<paperId> opens that paper's path directly
+    text = st.text_input("Which paper do you want to understand?", value=linked,
                          placeholder="e.g. Attention Is All You Need")
     if text.strip():
         found = load_candidates(str(pack_file), mtime, text.strip(), model_ok)
@@ -224,12 +278,14 @@ def main() -> None:
         else:
             by_id = {c["id"]: c for c in found}
             target_id = st.radio(
-                "Pick the paper:", list(by_id), index=None, key="target",
+                "Pick the paper:", list(by_id), index=0 if linked in by_id else None, key="target",
                 format_func=lambda pid: f"{label(by_id[pid])} · cited by {by_id[pid].get('cited_by') or 0:,}",
             )
             if target_id:
+                st.query_params["paper"] = target_id  # the URL now links to this reading path
                 already = reading.ids(reading_list())
-                show_path(load_reading_path(str(pack_file), mtime, target_id, size, depth, already))
+                result = load_reading_path(str(pack_file), mtime, target_id, size, depth, already)
+                show_path(result, pack_file, mtime)
     footer()
 
 

@@ -41,6 +41,15 @@ def authors_to_follow(conn: Any, ids: Iterable[str]) -> list[Row]:
     return [dict(r) for r in conn.execute(queries.AUTHORS_TO_FOLLOW, {"ids": ids})] if ids else []
 
 
+def author_links(conn: Any, ids: Iterable[str], limit: int = 8) -> list[Row]:
+    """Return the top authors of the given papers as {id, name, papers: [paper ids]}."""
+    ids = list(ids)
+    if not ids:
+        return []
+    rows = conn.execute(queries.AUTHORS_OF_PAPERS, {"ids": ids, "limit": limit})
+    return [{"id": r["id"], "name": r["name"], "papers": sorted(r["papers"])} for r in rows]
+
+
 def topics_in_path(conn: Any, ids: Iterable[str]) -> list[Row]:
     """Return the arXiv categories of the given papers, with summed scores."""
     ids = list(ids)

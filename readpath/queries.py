@@ -135,6 +135,15 @@ ORDER BY papers DESC, author
 LIMIT 5
 """
 
+AUTHORS_OF_PAPERS = """
+MATCH (f:Paper)-[:BY]->(a:Author)
+WHERE f.id IN $ids
+WITH a, collect(DISTINCT f.id) AS papers
+RETURN a.id AS id, a.name AS name, papers
+ORDER BY size(papers) DESC, name
+LIMIT $limit
+"""
+
 # A primary arXiv category counts 1.0, a secondary one 0.5.
 TOPICS_IN_PATH = """
 MATCH (f:Paper)-[r:ABOUT]->(t:Topic)
