@@ -79,6 +79,12 @@ def test_summary_stats_on_toy_pack() -> None:
     assert [t for _, _, t in stats["top_cited"]] == ["Tc", "Tb", "Ta"]
 
 
+def test_paper_text() -> None:
+    """Embedding text is "title. abstract", or the title alone without an abstract."""
+    assert bp.paper_text({"title": "T", "abstract": " A "}) == "T. A"
+    assert bp.paper_text({"title": "T", "abstract": ""}) == "T"
+
+
 def test_collect_end_to_end(monkeypatch: pytest.MonkeyPatch) -> None:
     """Seeds → level 1 → best level 2 within budget, in-pack edges, arXiv attached."""
     raw = {

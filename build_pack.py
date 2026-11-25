@@ -1,7 +1,9 @@
-"""Build data/packs/<name>.rl from seed papers (this step: collect into data/raw/<name>.pack.json)."""
+"""Build data/packs/<name>.rl from seed papers."""
 
 import argparse
 import json
+import shutil
+import subprocess
 import sys
 from collections import Counter
 from collections.abc import Iterable
@@ -11,11 +13,14 @@ from typing import Any
 
 import requests
 
-from readpath import arxiv, http, s2
+from readpath import arxiv, http, s2, store
 
 Paper = dict[str, Any]
 Edge = tuple[str, str]
 TOP_CITED = 10
+PACKS_DIR = Path(__file__).resolve().parent / "data" / "packs"
+MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+EMBED_BATCH_SIZE = 64
 
 
 # ---------- pure functions ----------
@@ -97,6 +102,13 @@ def summary_stats(papers: list[Paper], edges: list[Edge]) -> dict[str, Any]:
     }
 
 
+def paper_text(p: Paper) -> str:
+    """Return the text to embed: "title. abstract", or just the title without an abstract."""
+    title = (p.get("title") or "").strip()
+    abstract = (p.get("abstract") or "").strip()
+    return f"{title}. {abstract}" if abstract else title
+
+
 def to_pack(name: str, seed_ids: list[str], papers: list[Paper], edges: list[Edge]) -> dict[str, Any]:
     """Assemble the pack JSON document (references are replaced by edges)."""
     return {
@@ -176,6 +188,58 @@ def save_pack(pack: dict[str, Any]) -> Path:
     return path
 
 
+def embed_papers(papers: list[Paper]) -> dict[str, list[float]]:
+    """Embed every paper's text with all-MiniLM-L6-v2 on the CPU."""
+    from sentence_transformers import SentenceTransformer
+
+    model = SentenceTransformer(MODEL_NAME, device="cpu")
+    vectors = model.encode(
+        [paper_text(p) for p in papers], batch_size=EMBED_BATCH_SIZE, show_progress_bar=True
+    )
+    return {p["id"]: [float(x) for x in v] for p, v in zip(papers, vectors, strict=True)}
+
+
+def _remove(path: Path) -> None:
+    """Delete a store at path, whether it is a single file or a directory."""
+    if path.is_dir():
+        shutil.rmtree(path)
+    elif path.exists():
+        path.unlink()
+
+
+def write_store(pack: dict[str, Any], embeddings: dict[str, list[float]], packs_dir: Path) -> Path:
+    """Write the pack to <name>.tmp.rl, clone it compactly to <name>.rl and return that path."""
+    relate_bin = shutil.which("relate")
+    if relate_bin is None:
+        raise RuntimeError("the `relate` CLI is not on PATH; it is needed for `relate clone`")
+    packs_dir.mkdir(parents=True, exist_ok=True)
+    tmp = packs_dir / f"{pack['name']}.tmp.rl"
+    final = packs_dir / f"{pack['name']}.rl"
+    _remove(tmp)
+    conn = store.open_store(tmp)
+    try:
+        store.create_schema(conn)
+        store.write_pack(conn, pack, embeddings)
+    finally:
+        conn.close()
+    _remove(final)
+    subprocess.run([relate_bin, "clone", str(tmp), str(final)], check=True)
+    _remove(tmp)
+    return final
+
+
+def print_store_counts(path: Path) -> None:
+    """Open a store read-only and print node and relationship counts."""
+    conn = store.open_store(path, read_only=True)
+    try:
+        nodes, rels = store.store_counts(conn)
+    finally:
+        conn.close()
+    print(f"\nWrote {path}")
+    print("Nodes:         " + ", ".join(f"{k} {v}" for k, v in nodes.items()))
+    print("Relationships: " + ", ".join(f"{k} {v}" for k, v in rels.items()))
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the argument parser."""
     parser = argparse.ArgumentParser(description="Build a ReadPath topic pack from seed papers.")
@@ -204,7 +268,9 @@ def main(argv: list[str] | None = None) -> int:
     print_summary(summary_stats(pack["papers"], [tuple(e) for e in pack["edges"]]))
     if args.dry_run:
         return 0
-    print("\nWriting to Relate is not implemented yet.")
+    print(f"\nEmbedding {len(pack['papers'])} papers with {MODEL_NAME} (CPU)")
+    embeddings = embed_papers(pack["papers"])
+    print_store_counts(write_store(pack, embeddings, PACKS_DIR))
     return 0
 
 
