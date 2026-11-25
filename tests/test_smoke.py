@@ -16,6 +16,7 @@ MODULES = [
     "readpath.path",
     "readpath.order",
     "readpath.cli",
+    "build_pack",
 ]
 
 
