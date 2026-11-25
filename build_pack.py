@@ -14,12 +14,12 @@ from typing import Any
 import requests
 
 from readpath import arxiv, http, s2, store
+from readpath.search import MODEL_NAME
 
 Paper = dict[str, Any]
 Edge = tuple[str, str]
 TOP_CITED = 10
-PACKS_DIR = Path(__file__).resolve().parent / "data" / "packs"
-MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+PACKS_DIR = store.PACKS_DIR
 EMBED_BATCH_SIZE = 64
 
 
@@ -214,7 +214,7 @@ def write_store(pack: dict[str, Any], embeddings: dict[str, list[float]], packs_
         raise RuntimeError("the `relate` CLI is not on PATH; it is needed for `relate clone`")
     packs_dir.mkdir(parents=True, exist_ok=True)
     tmp = packs_dir / f"{pack['name']}.tmp.rl"
-    final = packs_dir / f"{pack['name']}.rl"
+    final = store.pack_path(pack["name"], packs_dir)
     _remove(tmp)
     conn = store.open_store(tmp)
     try:

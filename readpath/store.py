@@ -10,8 +10,19 @@ from readpath import queries
 
 DIMENSIONS = 384
 BATCH_SIZE = 200
+PACKS_DIR = Path(__file__).resolve().parent.parent / "data" / "packs"
 
 Row = dict[str, Any]
+
+
+def pack_path(name: str, packs_dir: Path = PACKS_DIR) -> Path:
+    """Return the path of the committed pack <name>.rl."""
+    return packs_dir / f"{name}.rl"
+
+
+def list_packs(packs_dir: Path = PACKS_DIR) -> list[str]:
+    """Return the names of available packs (temporary builds excluded)."""
+    return sorted(p.stem for p in packs_dir.glob("*.rl") if not p.name.endswith(".tmp.rl"))
 
 
 def open_store(path: str | Path, read_only: bool = False) -> Any:

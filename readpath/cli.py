@@ -5,7 +5,7 @@ import sys
 
 import requests
 
-from readpath import s2
+from readpath import s2, search, store
 
 
 def _describe(exc: requests.RequestException) -> str:
@@ -23,9 +23,39 @@ def build_parser() -> argparse.ArgumentParser:
         description="Build a reading path for a research paper.",
     )
     commands = parser.add_subparsers(dest="command")
-    search = commands.add_parser("search", help="search Semantic Scholar for a paper title")
-    search.add_argument("title", help="paper title or search words")
+    search_cmd = commands.add_parser("search", help="search Semantic Scholar for a paper title")
+    search_cmd.add_argument("title", help="paper title or search words")
+    find = commands.add_parser("find", help="hybrid (vector + full-text) search inside a pack")
+    find.add_argument("question", help="what you are looking for, in plain words")
+    find.add_argument("--pack", required=True, help="pack name, e.g. transformers")
+    find.add_argument("-k", type=int, default=5, help="number of results (default 5)")
     return parser
+
+
+def cmd_find(question: str, pack: str, k: int) -> int:
+    """Print hybrid search results with their vector and full-text ranks."""
+    path = store.pack_path(pack)
+    if not path.exists():
+        available = ", ".join(store.list_packs()) or "none"
+        print(f"No pack named {pack!r} (available: {available}).", file=sys.stderr)
+        return 1
+    embedder = search.default_embedder()
+    conn = store.open_store(path, read_only=True)
+    try:
+        hits = search.hybrid_search(conn, question, k=k, embedder=embedder)
+    finally:
+        conn.close()
+    if not embedder.available:
+        print("(vector search unavailable: full-text results only)")
+    if not hits:
+        print("No matches.")
+        return 0
+    print(f"{'#':>2}  {'rrf':>6}  {'vec':>3}  {'text':>4}  {'year':4}  title")
+    for i, h in enumerate(hits, start=1):
+        vec = h["vector_rank"] or "-"
+        txt = h["text_rank"] or "-"
+        print(f"{i:>2}  {h['score']:.4f}  {vec:>3}  {txt:>4}  {h['year'] or '----':4}  {h['title']}")
+    return 0
 
 
 def cmd_search(title: str) -> int:
@@ -52,5 +82,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "search":
         return cmd_search(args.title)
+    if args.command == "find":
+        return cmd_find(args.question, args.pack, args.k)
     parser.print_help()
     return 0

@@ -71,6 +71,22 @@ MERGE (k:Pack {name: $name})
 SET k.seeds = $seeds, k.builtAt = $builtAt
 """
 
+# ---------- search ----------
+
+VECTOR_SEARCH = """
+MATCH (p:Paper)
+SEARCH p IN (VECTOR INDEX paper_embedding FOR vector($vector, 384, FLOAT32) LIMIT $k) SCORE AS score
+RETURN p.id AS id, p.title AS title, p.year AS year, score
+ORDER BY score DESC, id
+"""
+
+FULLTEXT_SEARCH = """
+MATCH (p:Paper)
+SEARCH p IN (FULLTEXT INDEX paper_text FOR $query LIMIT $k) SCORE AS score
+RETURN p.id AS id, p.title AS title, p.year AS year, score
+ORDER BY score DESC, id
+"""
+
 # ---------- reads ----------
 
 COUNT_NODES_BY_LABEL = """
