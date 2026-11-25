@@ -1,0 +1,51 @@
+{
+  "nodes": [
+    {
+      "id": "n0",
+      "position": {"x": 0, "y": 0},
+      "caption": "",
+      "labels": ["Paper"],
+      "properties": {
+        "id": "String (Semantic Scholar paperId)",
+        "title": "String",
+        "year": "Integer",
+        "abstract": "String (arXiv, CC0)",
+        "citedBy": "Integer",
+        "arxiv": "String",
+        "doi": "String",
+        "embedding": "Vector(384, FLOAT32)"
+      },
+      "style": {}
+    },
+    {
+      "id": "n1",
+      "position": {"x": 400, "y": -150},
+      "caption": "",
+      "labels": ["Author"],
+      "properties": {"id": "String", "name": "String"},
+      "style": {}
+    },
+    {
+      "id": "n2",
+      "position": {"x": 400, "y": 150},
+      "caption": "",
+      "labels": ["Topic"],
+      "properties": {"id": "String (arXiv category, e.g. cs.CL)"},
+      "style": {}
+    },
+    {
+      "id": "n3",
+      "position": {"x": -400, "y": 0},
+      "caption": "",
+      "labels": ["Pack"],
+      "properties": {"name": "String", "seeds": "[String] (Paper ids)", "builtAt": "String"},
+      "style": {}
+    }
+  ],
+  "relationships": [
+    {"id": "r0", "fromId": "n0", "toId": "n0", "type": "CITES", "properties": {}, "style": {}},
+    {"id": "r1", "fromId": "n0", "toId": "n1", "type": "BY", "properties": {}, "style": {}},
+    {"id": "r2", "fromId": "n0", "toId": "n2", "type": "ABOUT", "properties": {"primary": "Boolean"}, "style": {}}
+  ],
+  "style": {}
+}
