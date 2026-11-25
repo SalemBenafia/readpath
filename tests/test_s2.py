@@ -64,6 +64,7 @@ def test_get_papers_chunks_and_skips_nulls(batch: list, monkeypatch: pytest.Monk
     sizes: list[int] = []
 
     def fake_fetch(method: str, url: str, **kwargs: object) -> tuple[int, str]:
+        """Record the call and return the saved fixture response."""
         sizes.append(len(json.loads(kwargs["body"])["ids"]))
         return 200, json.dumps(batch)
 
@@ -72,3 +73,46 @@ def test_get_papers_chunks_and_skips_nulls(batch: list, monkeypatch: pytest.Monk
     papers = s2.get_papers([f"id{i}" for i in range(1001)])
     assert sizes == [500, 500, 1]
     assert len(papers) == 3 * 2
+
+
+def test_headers_without_key_send_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With no or an empty S2_API_KEY, no x-api-key header is sent (judges have no key)."""
+    monkeypatch.setattr(s2, "_env_loaded", True)  # do not read the developer's .env
+    monkeypatch.delenv("S2_API_KEY", raising=False)
+    assert s2._headers() == {}
+    monkeypatch.setenv("S2_API_KEY", "   ")
+    assert s2._headers() == {}
+
+
+def test_headers_with_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A set S2_API_KEY is sent as x-api-key."""
+    monkeypatch.setattr(s2, "_env_loaded", True)
+    monkeypatch.setenv("S2_API_KEY", "test-key")
+    assert s2._headers() == {"x-api-key": "test-key"}
+
+
+def test_match_title_404_and_hit(batch: list, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A 404 from the match endpoint means no match; otherwise the first item is returned."""
+    responses = [(404, '{"error": "Title match not found"}'), (200, json.dumps({"data": [batch[0]]}))]
+    calls: list[dict] = []
+
+    def fake_fetch(method: str, url: str, **kwargs: object) -> tuple[int, str]:
+        """Record the call and return the next queued response."""
+        calls.append({"url": url, **kwargs})
+        return responses.pop(0)
+
+    monkeypatch.setattr(s2.http, "fetch", fake_fetch)
+    monkeypatch.setattr(s2, "_headers", lambda: {})
+    assert s2.match_title("No Such Paper") is None
+    assert s2.match_title("Attention Is All You Need")["paperId"] == batch[0]["paperId"]
+    assert all(c["allow_404"] for c in calls)
+    assert "query=Attention+Is+All+You+Need" in calls[1]["url"]
+
+
+def test_search_returns_data_list(batch: list, monkeypatch: pytest.MonkeyPatch) -> None:
+    """search() returns the data list, or [] when the response has none."""
+    responses = [(200, json.dumps({"total": 1, "data": [batch[0]]})), (200, json.dumps({"total": 0}))]
+    monkeypatch.setattr(s2.http, "fetch", lambda method, url, **kwargs: responses.pop(0))
+    monkeypatch.setattr(s2, "_headers", lambda: {})
+    assert [p["paperId"] for p in s2.search("attention")] == [batch[0]["paperId"]]
+    assert s2.search("nothing") == []

@@ -97,6 +97,7 @@ def test_collect_end_to_end(monkeypatch: pytest.MonkeyPatch) -> None:
     }
 
     def to_raw(pid: str) -> dict:
+        """Return a raw Semantic Scholar paper for a fake id."""
         r = raw[pid]
         return {"paperId": pid, "title": f"T{pid}", "year": 2000, "citationCount": r.get("cites", 0),
                 "externalIds": {"ArXiv": r["arxiv"]} if "arxiv" in r else None,
@@ -105,6 +106,7 @@ def test_collect_end_to_end(monkeypatch: pytest.MonkeyPatch) -> None:
     fetched: list[list[str]] = []
 
     def get_papers(ids: list[str]) -> list[dict]:
+        """Record the requested ids and return their raw papers."""
         fetched.append(list(ids))
         return [to_raw(i) for i in ids]
 

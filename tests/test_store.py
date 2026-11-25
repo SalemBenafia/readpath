@@ -1,12 +1,13 @@
 """Tests for readpath.store: row builders and writing a fake pack into a real .rl file."""
 
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
 
 import build_pack
-from readpath import store
+from readpath import queries, store
 
 EXPECTED_NODES = {"Author": 3, "Pack": 1, "Paper": 5, "Topic": 3}
 # BY: p1->u1, p1->u2, p2->u2 (id-less author skipped), p3->u3, p5->u1
@@ -57,16 +58,16 @@ def test_write_pack_counts(tmp_path: Path, toy_pack: dict, toy_embeddings: dict)
     conn = store.open_store(path, read_only=True)
     try:
         assert store.store_counts(conn) == (EXPECTED_NODES, EXPECTED_RELS)
-        primary = conn.execute(
-            "MATCH (p:Paper)-[r:ABOUT {primary: true}]->(t:Topic) RETURN p.id AS p, t.id AS t ORDER BY p"
-        ).data()
-        assert primary == [{"p": "p1", "t": "cs.CL"}, {"p": "p2", "t": "cs.CL"}, {"p": "p5", "t": "cs.LG"}]
-        dims = conn.execute(
-            "MATCH (p:Paper) RETURN min(vector_dimension_count(p.embedding)) AS d"
-        ).single()["d"]
-        assert dims == 384
-        pack_node = conn.execute("MATCH (k:Pack) RETURN k.name AS name, k.seeds AS seeds").single()
+        primary = conn.execute(queries.PRIMARY_TOPICS).data()
+        assert primary == [
+            {"paper": "p1", "topic": "cs.CL"},
+            {"paper": "p2", "topic": "cs.CL"},
+            {"paper": "p5", "topic": "cs.LG"},
+        ]
+        assert conn.execute(queries.MIN_EMBEDDING_DIMENSIONS).single()["dimensions"] == 384
+        pack_node = conn.execute(queries.PACK_INFO).single()
         assert (pack_node["name"], pack_node["seeds"]) == ("toy", ["p1"])
+        assert pack_node["built_at"] == toy_pack["built_at"]
     finally:
         conn.close()
 
@@ -84,6 +85,25 @@ def test_write_store_clones_and_removes_tmp(
         assert store.store_counts(conn) == (EXPECTED_NODES, EXPECTED_RELS)
     finally:
         conn.close()
-    # A rebuild replaces the old pack instead of failing.
+    # A rebuild replaces the old pack instead of failing, and leaves no temporary stores.
     build_pack.write_store(toy_pack, toy_embeddings, tmp_path)
-    assert final.exists()
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["toy.rl"]
+
+
+def test_failed_clone_keeps_old_pack(
+    tmp_path: Path, toy_pack: dict, toy_embeddings: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If `relate clone` fails, the existing <name>.rl is untouched and temp stores are removed."""
+    old = tmp_path / "toy.rl"
+    old.write_bytes(b"old pack")
+
+    def failing_run(*args: object, **kwargs: object) -> None:
+        """Simulate `relate clone` exiting with an error."""
+        raise subprocess.CalledProcessError(1, "relate clone")
+
+    monkeypatch.setattr(build_pack.shutil, "which", lambda name: "/usr/bin/relate")
+    monkeypatch.setattr(build_pack.subprocess, "run", failing_run)
+    with pytest.raises(subprocess.CalledProcessError):
+        build_pack.write_store(toy_pack, toy_embeddings, tmp_path)
+    assert old.read_bytes() == b"old pack"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["toy.rl"]

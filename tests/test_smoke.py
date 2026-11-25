@@ -33,13 +33,16 @@ def test_cli_main_without_command_returns_zero() -> None:
     assert main([]) == 0
 
 
-def test_cli_search_reports_api_failure(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+def test_cli_search_reports_api_failure(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     """A search that fails after retries prints a short error and exits 1, no traceback."""
     import requests
 
     from readpath import cli
 
     def failing_search(query: str, limit: int = 5) -> list:
+        """Simulate Semantic Scholar failing after all retries."""
         raise requests.HTTPError("429", response=type("R", (), {"status_code": 429})())
 
     monkeypatch.setattr(cli.s2, "search", failing_search)

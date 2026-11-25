@@ -1,15 +1,12 @@
 """Command-line interface for `python -m readpath`."""
 
 import argparse
-import re
 import sys
 from typing import Any
 
 import requests
 
 from readpath import path, s2, search, store
-
-PAPER_ID = re.compile(r"^[0-9a-f]{40}$")
 
 
 def _describe(exc: requests.RequestException) -> str:
@@ -44,24 +41,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _open_pack(pack: str) -> Any:
     """Open a pack read-only, or print the available packs and return None."""
-    path = store.pack_path(pack)
-    if not path.exists():
+    pack_file = store.pack_path(pack)
+    if not pack_file.exists():
         available = ", ".join(store.list_packs()) or "none"
         print(f"No pack named {pack!r} (available: {available}).", file=sys.stderr)
         return None
-    return store.open_store(path, read_only=True)
-
-
-def resolve_target(conn: Any, text: str) -> tuple[dict | None, str]:
-    """Find the target paper by paperId, then exact title, then the top hybrid search hit."""
-    text = text.strip()
-    if PAPER_ID.match(text):
-        return path.paper(conn, text), "paperId"
-    exact = path.paper_by_title(conn, text)
-    if exact is not None:
-        return exact, "title"
-    hits = search.hybrid_search(conn, text, k=1)
-    return (path.paper(conn, hits[0]["id"]) if hits else None), "search"
+    return store.open_store(pack_file, read_only=True)
 
 
 def cmd_path(text: str, pack: str, depth: int, size: int, read: str) -> int:
@@ -70,7 +55,7 @@ def cmd_path(text: str, pack: str, depth: int, size: int, read: str) -> int:
     if conn is None:
         return 1
     try:
-        target, how = resolve_target(conn, text)
+        target, how = path.find_paper(conn, text)
         if target is None:
             print(f"No paper in pack {pack!r} matches {text!r}.", file=sys.stderr)
             return 1

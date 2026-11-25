@@ -1,11 +1,13 @@
 """Foundations, citation chains, authors and topics for a target paper."""
 
+import re
 from collections.abc import Iterable
 from typing import Any
 
-from readpath import order, queries
+from readpath import order, queries, search
 
 MAX_TITLE = 40
+PAPER_ID = re.compile(r"^[0-9a-f]{40}$")  # Semantic Scholar paperId
 
 Row = dict[str, Any]
 
@@ -88,6 +90,20 @@ def paper_by_title(conn: Any, title: str) -> Row | None:
         return None
     rows = list(conn.execute(queries.PAPER_BY_TITLE, {"title": wanted}))
     return dict(rows[0]) if rows else None
+
+
+def find_paper(conn: Any, text: str, embedder: Any = None) -> tuple[Row | None, str]:
+    """Find a target by paperId, then exact title, then top hybrid-search hit; return (paper, how)."""
+    text = text.strip()
+    if not text:
+        return None, "none"
+    if PAPER_ID.match(text):
+        return paper(conn, text), "paperId"
+    exact = paper_by_title(conn, text)
+    if exact is not None:
+        return exact, "title"
+    hits = search.hybrid_search(conn, text, k=1, embedder=embedder)
+    return (paper(conn, hits[0]["id"]) if hits else None), "search"
 
 
 def reading_path(

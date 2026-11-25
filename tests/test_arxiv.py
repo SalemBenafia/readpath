@@ -1,6 +1,7 @@
 """Tests for the arXiv client (no network)."""
 
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
@@ -47,6 +48,7 @@ def test_get_metadata_strips_dedupes_and_throttles(monkeypatch: pytest.MonkeyPat
     urls: list[str] = []
 
     def fake_fetch(method: str, url: str, **kwargs: object) -> tuple[int, str]:
+        """Record the call and return the saved fixture response."""
         urls.append(url)
         assert kwargs["before_request"] is arxiv._throttle
         return 200, (FIXTURES / "arxiv_feed.xml").read_text()
@@ -70,3 +72,19 @@ def test_throttle_waits_three_seconds(monkeypatch: pytest.MonkeyPatch) -> None:
     clock[0] += 1.0
     arxiv._throttle()
     assert slept == [pytest.approx(2.0)]
+
+
+def test_get_metadata_batches_of_100(monkeypatch: pytest.MonkeyPatch) -> None:
+    """205 ids are requested in 3 calls of 100, 100 and 5 ids."""
+    sizes: list[int] = []
+
+    def fake_fetch(method: str, url: str, **kwargs: object) -> tuple[int, str]:
+        """Record how many ids each call asks for and return an empty feed."""
+        query = parse_qs(urlparse(url).query)
+        sizes.append(len(query["id_list"][0].split(",")))
+        assert query["max_results"] == [str(sizes[-1])]
+        return 200, '<feed xmlns="http://www.w3.org/2005/Atom"></feed>'
+
+    monkeypatch.setattr(arxiv.http, "fetch", fake_fetch)
+    assert arxiv.get_metadata([f"2401.{i:05d}v1" for i in range(205)]) == {}
+    assert sizes == [100, 100, 5]

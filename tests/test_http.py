@@ -29,6 +29,7 @@ def env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict:
     state: dict = {"responses": [], "calls": 0, "sleeps": []}
 
     def fake_request(*args: object, **kwargs: object) -> FakeResponse:
+        """Count the call and return the next queued response."""
         state["calls"] += 1
         return state["responses"].pop(0)
 

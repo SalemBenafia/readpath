@@ -172,6 +172,22 @@ RETURN label, count(*) AS n
 ORDER BY label
 """
 
+PACK_INFO = """
+MATCH (k:Pack)
+RETURN k.name AS name, k.seeds AS seeds, k.builtAt AS built_at
+"""
+
+PRIMARY_TOPICS = """
+MATCH (p:Paper)-[:ABOUT {primary: true}]->(t:Topic)
+RETURN p.id AS paper, t.id AS topic
+ORDER BY paper, topic
+"""
+
+MIN_EMBEDDING_DIMENSIONS = """
+MATCH (p:Paper)
+RETURN min(vector_dimension_count(p.embedding)) AS dimensions
+"""
+
 COUNT_RELS_BY_TYPE = """
 MATCH ()-[r]->()
 RETURN type(r) AS type, count(*) AS n

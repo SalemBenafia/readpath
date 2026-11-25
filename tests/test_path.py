@@ -1,5 +1,8 @@
 """Tests for readpath.path on a pack whose answers are obvious (see conftest.make_path_pack)."""
 
+from pathlib import Path
+from typing import Any
+
 import pytest
 
 from readpath import path
@@ -13,7 +16,7 @@ def ids(rows: list[dict]) -> list[str]:
 # ---------- foundations ----------
 
 
-def test_foundations_depth3_ranks_by_routes_then_cited_by(path_conn) -> None:
+def test_foundations_depth3_ranks_by_routes_then_cited_by(path_conn: Any) -> None:
     """F has 3 routes; the rest have 1 and follow cited_by (D 30, B 20, A 10, E 5)."""
     rows = path.foundations(path_conn, "T", depth=3, limit=10)
     assert ids(rows) == ["F", "D", "B", "A", "E"]
@@ -21,23 +24,23 @@ def test_foundations_depth3_ranks_by_routes_then_cited_by(path_conn) -> None:
     assert set(rows[0]) == {"id", "title", "year", "cited_by", "routes"}
 
 
-def test_foundations_depth2_does_not_reach_three_hops(path_conn) -> None:
+def test_foundations_depth2_does_not_reach_three_hops(path_conn: Any) -> None:
     """E is 3 hops from T, so depth 2 leaves it out."""
     assert ids(path.foundations(path_conn, "T", depth=2, limit=10)) == ["F", "D", "B", "A"]
 
 
-def test_foundations_limit_and_already_read(path_conn) -> None:
+def test_foundations_limit_and_already_read(path_conn: Any) -> None:
     """limit caps the list and already-read papers are skipped."""
     assert ids(path.foundations(path_conn, "T", limit=2)) == ["F", "D"]
     assert ids(path.foundations(path_conn, "T", limit=2, already_read=["F"])) == ["D", "B"]
 
 
-def test_foundations_of_leaf_is_empty(path_conn) -> None:
+def test_foundations_of_leaf_is_empty(path_conn: Any) -> None:
     """A paper that cites nothing in the pack has no foundations."""
     assert path.foundations(path_conn, "E") == []
 
 
-def test_unsupported_depth_raises(path_conn) -> None:
+def test_unsupported_depth_raises(path_conn: Any) -> None:
     """Only depths with a constant (2, 3) are allowed."""
     with pytest.raises(ValueError):
         path.foundations(path_conn, "T", depth=4)
@@ -48,7 +51,7 @@ def test_unsupported_depth_raises(path_conn) -> None:
 # ---------- why chains ----------
 
 
-def test_why_chains_shortest_first(path_conn) -> None:
+def test_why_chains_shortest_first(path_conn: Any) -> None:
     """The direct citation comes first, then the two 3-node chains via A and B."""
     chains = path.why_chains(path_conn, "T", "F")
     assert [ids(c) for c in chains][0] == ["T", "F"]
@@ -56,7 +59,7 @@ def test_why_chains_shortest_first(path_conn) -> None:
     assert chains[0][1] == {"id": "F", "title": "Paper F", "year": 2010}
 
 
-def test_why_chains_respects_depth(path_conn) -> None:
+def test_why_chains_respects_depth(path_conn: Any) -> None:
     """E needs 3 hops: found at depth 3, not at depth 2."""
     assert [ids(c) for c in path.why_chains(path_conn, "T", "E", depth=3)] == [["T", "A", "D", "E"]]
     assert path.why_chains(path_conn, "T", "E", depth=2) == []
@@ -99,7 +102,7 @@ def test_why_text_without_chain() -> None:
 # ---------- authors and topics ----------
 
 
-def test_authors_to_follow(path_conn) -> None:
+def test_authors_to_follow(path_conn: Any) -> None:
     """Ada wrote both F and D, so she comes first."""
     authors = path.authors_to_follow(path_conn, ["F", "D", "A"])
     assert authors[0] == {"author": "Ada", "papers": 2}
@@ -107,7 +110,7 @@ def test_authors_to_follow(path_conn) -> None:
     assert path.authors_to_follow(path_conn, []) == []
 
 
-def test_topics_in_path_sums_primary_and_secondary(path_conn) -> None:
+def test_topics_in_path_sums_primary_and_secondary(path_conn: Any) -> None:
     """cs.CL is primary for F and D (1.0 + 1.0); cs.LG is secondary for D (0.5)."""
     topics = path.topics_in_path(path_conn, ["F", "D", "E"])
     assert topics == [
@@ -120,7 +123,7 @@ def test_topics_in_path_sums_primary_and_secondary(path_conn) -> None:
 # ---------- reading path ----------
 
 
-def test_reading_path_structure(path_conn) -> None:
+def test_reading_path_structure(path_conn: Any) -> None:
     """The full result has target, steps with chains and why, authors and topics."""
     result = path.reading_path(path_conn, "T", size=3)
     assert result["target"]["id"] == "T"
@@ -133,46 +136,57 @@ def test_reading_path_structure(path_conn) -> None:
     assert result["topics"][0]["topic"] == "cs.CL"
 
 
-def test_paper_by_title_is_case_and_space_insensitive(path_conn) -> None:
+def test_paper_by_title_is_case_and_space_insensitive(path_conn: Any) -> None:
     """An exact title matches regardless of case and extra spaces; anything else does not."""
     assert path.paper_by_title(path_conn, "  paper   F ")["id"] == "F"
     assert path.paper_by_title(path_conn, "Paper") is None
     assert path.paper_by_title(path_conn, "   ") is None
 
 
-def test_cli_resolve_target_prefers_exact_title(path_conn, monkeypatch) -> None:
+def test_find_paper_prefers_exact_title(path_conn: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     """An exact title wins without running hybrid search at all."""
-    from readpath import cli
 
     def no_search(*args: object, **kwargs: object) -> list:
+        """Fail the test if hybrid search is called."""
         raise AssertionError("hybrid search should not run for an exact title")
 
-    monkeypatch.setattr(cli.search, "hybrid_search", no_search)
-    target, how = cli.resolve_target(path_conn, "PAPER d")
+    monkeypatch.setattr(path.search, "hybrid_search", no_search)
+    target, how = path.find_paper(path_conn, "PAPER d")
     assert (target["id"], how) == ("D", "title")
 
 
-def test_edges_among(path_conn) -> None:
+def test_find_paper_by_id_and_search_fallback(path_conn: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A paperId-shaped text is looked up directly; other text falls back to the top search hit."""
+    assert path.find_paper(path_conn, "f" * 40) == (None, "paperId")  # valid shape, not in pack
+    monkeypatch.setattr(path.search, "hybrid_search", lambda conn, text, k, embedder: [{"id": "B"}])
+    target, how = path.find_paper(path_conn, "something about B")
+    assert (target["id"], how) == ("B", "search")
+    assert path.find_paper(path_conn, "   ") == (None, "none")
+
+
+def test_edges_among(path_conn: Any) -> None:
     """Only citations with both ends in the id set are returned."""
     assert sorted(path.edges_among(path_conn, ["A", "D", "F", "T"])) == [
         ("A", "D"), ("A", "F"), ("T", "A"), ("T", "F")]
     assert path.edges_among(path_conn, []) == []
 
 
-def test_reading_path_steps_in_reading_order(path_conn) -> None:
+def test_reading_path_steps_in_reading_order(path_conn: Any) -> None:
     """E before D (D cites E); F before A and B (they cite it); D before A (A cites D)."""
     result = path.reading_path(path_conn, "T", size=5)
     assert ids(result["steps"]) == ["E", "F", "D", "A", "B"]
 
 
-def test_cli_path_prints_reading_list(path_store_path, monkeypatch, capsys) -> None:
+def test_cli_path_prints_reading_list(
+    path_store_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     """The path command prints numbered steps, each with its why, and the target last."""
     import re
 
     from readpath import cli, store
 
     monkeypatch.setattr(store, "pack_path", lambda name: path_store_path)
-    monkeypatch.setattr(cli, "PAPER_ID", re.compile(r"^[A-Z]$"))  # fixture ids are single letters
+    monkeypatch.setattr(path, "PAPER_ID", re.compile(r"^[A-Z]$"))  # fixture ids are single letters
     assert cli.main(["path", "T", "--pack", "paths", "--size", "2", "--read", "F"]) == 0
     out = capsys.readouterr().out
     # F is already read; the top 2 left are D (cited_by 30) and B (20), no edge between them -> by year.
@@ -186,7 +200,7 @@ def test_cli_path_prints_reading_list(path_store_path, monkeypatch, capsys) -> N
     assert "    Your paper cites it directly." in out
 
 
-def test_reading_path_unknown_target(path_conn) -> None:
+def test_reading_path_unknown_target(path_conn: Any) -> None:
     """A paper that is not in the pack raises ValueError."""
     with pytest.raises(ValueError):
         path.reading_path(path_conn, "missing")

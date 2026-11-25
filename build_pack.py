@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -208,23 +209,34 @@ def _remove(path: Path) -> None:
 
 
 def write_store(pack: dict[str, Any], embeddings: dict[str, list[float]], packs_dir: Path) -> Path:
-    """Write the pack to <name>.tmp.rl, clone it compactly to <name>.rl and return that path."""
+    """Write the pack to <name>.tmp.rl, clone it compactly and swap it in as <name>.rl.
+
+    The old <name>.rl is only replaced after the clone succeeds, so a failed rebuild
+    never leaves the repository without its pack.
+    """
     relate_bin = shutil.which("relate")
     if relate_bin is None:
         raise RuntimeError("the `relate` CLI is not on PATH; it is needed for `relate clone`")
     packs_dir.mkdir(parents=True, exist_ok=True)
     tmp = packs_dir / f"{pack['name']}.tmp.rl"
+    compact = packs_dir / f"{pack['name']}.new.tmp.rl"
     final = store.pack_path(pack["name"], packs_dir)
     _remove(tmp)
-    conn = store.open_store(tmp)
+    _remove(compact)
     try:
-        store.create_schema(conn)
-        store.write_pack(conn, pack, embeddings)
+        conn = store.open_store(tmp)
+        try:
+            store.create_schema(conn)
+            store.write_pack(conn, pack, embeddings)
+        finally:
+            conn.close()
+        subprocess.run([relate_bin, "clone", str(tmp), str(compact)], check=True)
+        if final.is_dir():
+            shutil.rmtree(final)
+        os.replace(compact, final)
     finally:
-        conn.close()
-    _remove(final)
-    subprocess.run([relate_bin, "clone", str(tmp), str(final)], check=True)
-    _remove(tmp)
+        _remove(tmp)
+        _remove(compact)
     return final
 
 

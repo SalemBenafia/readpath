@@ -1,7 +1,9 @@
 """Shared test fixtures: a tiny 5-paper pack with random vectors, written to a temp .rl store."""
 
 import random
+from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -67,7 +69,8 @@ def make_path_pack() -> dict:
     ada = {"id": "ada", "name": "Ada"}
 
     def p(pid: str, year: int, cited_by: int, authors: list, primary: str | None = None,
-          categories: list[str] = ()) -> dict:
+          categories: tuple[str, ...] | list[str] = ()) -> dict:
+        """Make one paper of the path pack."""
         return {"id": pid, "title": f"Paper {pid}", "year": year, "cited_by": cited_by,
                 "arxiv": None, "doi": None, "authors": authors, "level": 1, "abstract": "",
                 "primary_category": primary, "categories": list(categories)}
@@ -109,7 +112,7 @@ def path_store_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 @pytest.fixture
-def path_conn(path_store_path: Path):
+def path_conn(path_store_path: Path) -> Iterator[Any]:
     """A read-only connection to the reading-path pack, closed after the test."""
     conn = store.open_store(path_store_path, read_only=True)
     yield conn
@@ -117,7 +120,7 @@ def path_conn(path_store_path: Path):
 
 
 @pytest.fixture
-def toy_conn(toy_store_path: Path):
+def toy_conn(toy_store_path: Path) -> Iterator[Any]:
     """A read-only connection to the fake pack store, closed after the test."""
     conn = store.open_store(toy_store_path, read_only=True)
     yield conn

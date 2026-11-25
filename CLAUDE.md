@@ -21,14 +21,15 @@ showing the citation chain. Built for the Relate by Neo4j Hackathon
 - readpath/s2.py        Semantic Scholar client + cache in data/raw/
 - readpath/arxiv.py     arXiv client (abstracts, categories) + cache in data/raw/
 - readpath/store.py     open stores, create schema, write packs
-- readpath/queries.py   ALL Cypher statements live here as named constants
+- readpath/queries.py   ALL Cypher statements live here as named constants (tests too)
 - readpath/search.py    vector + full-text search, reciprocal rank fusion
-- readpath/path.py      foundations, citation chains, authors and topics
+- readpath/path.py      find_paper, foundations, citation chains, authors and topics
 - readpath/order.py     reading order (topological sort, year tie-break)
 - readpath/cli.py       `python -m readpath ...` commands
 - build_pack.py         builds data/packs/<name>.rl from seed papers
 - app.py                Streamlit app
-- tests/                pytest tests (tiny fixture pack, no network)
+- tests/                pytest tests, no network; tests/conftest.py builds two tiny packs:
+                        toy (5 papers) and paths (answers are obvious, see make_path_pack)
 - data/packs/*.rl       ready-made topic packs, COMMITTED (judges start here)
 
 ## Graph model
@@ -50,7 +51,8 @@ showing the citation chain. Built for the Relate by Neo4j Hackathon
 ## Relate rules (Relate is NOT full Neo4j)
 - No APOC and no GDS. Run algorithms in Python on query results.
 - Variable-length paths need an upper bound, e.g. [:CITES*1..3].
-  The bound cannot be a parameter: keep one constant per depth.
+  The bound cannot be a parameter: keep one constant per depth, picked from
+  queries.FOUNDATIONS / queries.WHY_CHAINS (depth 2 or 3; 3 is the default, max 25 ms).
 - Store embeddings as typed vectors: SET p.embedding = vector($emb, 384, FLOAT32)
 - Vector search: MATCH (p:Paper)
   SEARCH p IN (VECTOR INDEX paper_embedding FOR $v LIMIT 10) SCORE AS score
@@ -61,13 +63,20 @@ showing the citation chain. Built for the Relate by Neo4j Hackathon
   Stop them before rebuilding a pack.
 - A connection belongs to the thread that opened it. In Streamlit, open a new read-only
   connection inside each data function; never cache connections.
+- Find a target paper with path.find_paper (paperId, then exact title, then hybrid search).
+  Hybrid search alone ranks "Attention is All you Need" 8th for its own title.
+- User text goes into full-text search only through search.clean_query.
 - When unsure about syntax, use the installed Relate skill or run `relate agent-context`.
 
 ## Commands
 - make setup   create .venv and install everything (CPU-only torch)
 - make test    run pytest
 - make run     start the Streamlit app
+- python -m readpath path "<title or paperId>" --pack transformers [--depth 2|3] [--size 6] [--read id1,id2]
+- python -m readpath find "<question>" --pack transformers [-k 5]
+- python -m readpath search "<title>"   (live Semantic Scholar lookup, needs network)
 - python build_pack.py --name transformers --seed "Attention Is All You Need" --max-papers 800
+  (replaces data/packs/<name>.rl only after the new store is written and cloned)
 - relate --database data/packs/transformers.rl --read-only 'MATCH (p:Paper) RETURN count(p)'
 
 ## Working rules
