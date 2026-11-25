@@ -88,6 +88,24 @@ def make_path_pack() -> dict:
             "papers": papers, "edges": edges}
 
 
+def make_loop_pack() -> dict:
+    """Return a pack with citation loops, like real arXiv data where updated papers cite back.
+
+    T -> A, A -> B, B -> A (A and B cite each other), T -> C, C -> T (C cites T back).
+    Every foundation of T has exactly 1 simple route. Walks that repeat a paper
+    (T -> A -> B -> A, T -> C -> T -> A) must not count.
+    """
+    papers = [
+        {"id": pid, "title": f"Paper {pid}", "year": year, "cited_by": cited_by, "arxiv": None,
+         "doi": None, "authors": [], "level": 0 if pid == "T" else 1, "abstract": "",
+         "primary_category": None, "categories": []}
+        for pid, year, cited_by in [("T", 2020, 1), ("A", 2015, 30), ("B", 2015, 20), ("C", 2020, 10)]
+    ]
+    edges = [["T", "A"], ["A", "B"], ["B", "A"], ["T", "C"], ["C", "T"]]
+    return {"name": "loops", "seeds": ["T"], "built_at": "2026-11-25T00:00:00+00:00",
+            "papers": papers, "edges": edges}
+
+
 def _write_store(path: Path, pack: dict) -> Path:
     """Write a pack with random embeddings to a new store at path."""
     conn = store.open_store(path)
@@ -109,6 +127,20 @@ def toy_store_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
 def path_store_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """The reading-path pack written once to a temp .rl store."""
     return _write_store(tmp_path_factory.mktemp("packs") / "paths.rl", make_path_pack())
+
+
+@pytest.fixture(scope="session")
+def loop_store_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The citation-loop pack written once to a temp .rl store."""
+    return _write_store(tmp_path_factory.mktemp("packs") / "loops.rl", make_loop_pack())
+
+
+@pytest.fixture
+def loop_conn(loop_store_path: Path) -> Iterator[Any]:
+    """A read-only connection to the citation-loop pack, closed after the test."""
+    conn = store.open_store(loop_store_path, read_only=True)
+    yield conn
+    conn.close()
 
 
 @pytest.fixture

@@ -24,8 +24,21 @@ def foundations(
 ) -> list[Row]:
     """Return earlier papers reachable from the target, ranked by number of citation routes."""
     statement = _pick(queries.FOUNDATIONS, depth)
-    params = {"target": target_id, "already_read": list(already_read), "limit": limit}
+    params = {
+        "target": target_id,
+        "already_read": list(already_read),
+        "limit": limit,
+        "loops": _loop_walks(conn, target_id, depth),
+    }
     return [dict(r) for r in conn.execute(statement, params)]
+
+
+def _loop_walks(conn: Any, target_id: str, depth: int) -> list[str]:
+    """Return one foundation id per walk from the target that visits a paper twice."""
+    statement = queries.LOOP_WALKS[depth]
+    if statement is None:
+        return []
+    return [r["id"] for r in conn.execute(statement, {"target": target_id})]
 
 
 def why_chains(conn: Any, target_id: str, foundation_id: str, depth: int = 3) -> list[list[Row]]:

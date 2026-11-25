@@ -65,6 +65,23 @@ def test_why_chains_respects_depth(path_conn: Any) -> None:
     assert path.why_chains(path_conn, "T", "E", depth=2) == []
 
 
+# ---------- citation loops (see conftest.make_loop_pack) ----------
+
+
+@pytest.mark.parametrize("depth", [2, 3])
+def test_foundations_ignore_routes_that_repeat_a_paper(loop_conn: Any, depth: int) -> None:
+    """Loops (A <-> B, T <-> C) add no routes: every foundation has exactly 1."""
+    rows = path.foundations(loop_conn, "T", depth=depth, limit=10)
+    assert ids(rows) == ["A", "B", "C"]
+    assert [r["routes"] for r in rows] == [1, 1, 1]
+
+
+@pytest.mark.parametrize("depth", [2, 3])
+def test_why_chains_never_repeat_a_paper(loop_conn: Any, depth: int) -> None:
+    """Only the simple chain is shown, never T -> A -> B -> A or T -> C -> T -> A."""
+    assert [ids(c) for c in path.why_chains(loop_conn, "T", "A", depth=depth)] == [["T", "A"]]
+
+
 # ---------- why text (pure) ----------
 
 

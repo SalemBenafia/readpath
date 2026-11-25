@@ -14,15 +14,20 @@ SEARCH p IN (FULLTEXT INDEX paper_text FOR $q LIMIT 5) SCORE AS score
 RETURN p.id AS id, p.title AS title, p.year AS year, score
 ORDER BY score DESC
 Pick the best match and say which one you picked.
-3. Get its foundations:
-MATCH (t:Paper {id: $target})-[:CITES*1..3]->(f:Paper)
+3. Get its foundations. Citations can loop (two papers citing each other), so the
+WHERE line skips routes that visit a paper twice:
+MATCH path = (t:Paper {id: $target})-[:CITES*1..3]->(f:Paper)
+WHERE f <> t AND none(n IN nodes(path)[1..-1] WHERE n = t OR n = f)
 WITH f, count(*) AS routes
 RETURN f.id AS id, f.title AS title, f.year AS year, routes
 ORDER BY routes DESC, year ASC LIMIT 6
 4. For each foundation, get its shortest citation chain:
 MATCH path = (t:Paper {id: $target})-[:CITES*1..3]->(f:Paper {id: $f})
+WHERE none(n IN nodes(path)[1..-1] WHERE n = t OR n = f)
 RETURN [n IN nodes(path) | n.title] AS chain
 ORDER BY length(path) ASC LIMIT 1
 5. Answer with a numbered reading list, oldest prerequisites first. For each paper give
 one line explaining WHY, based only on the chains you found.
 Never invent papers that are not in the graph.
+For follow-up questions (authors, topics), use the foundations from step 3 or the papers
+the target cites directly. From a pack's seed paper, 3 hops reaches almost the whole pack.

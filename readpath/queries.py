@@ -89,11 +89,28 @@ ORDER BY score DESC, id
 
 # ---------- reading paths ----------
 # Variable-length bounds cannot be parameters, so there is one constant per depth.
+# Citation data has loops: an updated arXiv paper can cite a paper that cites it back.
+# A route must not visit a paper twice. With at most 3 hops and no self-citations
+# (build_pack drops them), that means: no middle paper is the start or the end.
+SIMPLE_ROUTE = "none(n IN nodes(path)[1..-1] WHERE n = t OR n = f)"
+
+# Binding `path` in the foundations query costs ~4x, so there we count all walks and
+# subtract the loop walks. Up to 3 hops there are only two shapes, and only at 3 hops:
+# T -> X -> T -> F and T -> F -> Y -> F. One row per loop walk, holding F's id.
+LOOP_WALKS_D3 = """
+MATCH (t:Paper {id: $target})-[:CITES]->(:Paper)-[:CITES]->(t)-[:CITES]->(f:Paper)
+RETURN f.id AS id
+UNION ALL
+MATCH (t:Paper {id: $target})-[:CITES]->(f:Paper)-[:CITES]->(y:Paper)
+WHERE y <> t AND (y)-[:CITES]->(f)
+RETURN f.id AS id
+"""
 
 FOUNDATIONS_D2 = """
 MATCH (t:Paper {id: $target})-[:CITES*1..2]->(f:Paper)
 WHERE NOT f.id IN $already_read AND f.id <> $target
-WITH f, count(*) AS routes
+WITH f, count(*) AS walks
+WITH f, walks - size([x IN $loops WHERE x = f.id]) AS routes
 RETURN f.id AS id, f.title AS title, f.year AS year, f.citedBy AS cited_by,
        f.arxiv AS arxiv, f.doi AS doi, routes
 ORDER BY routes DESC, cited_by DESC, id
@@ -103,7 +120,8 @@ LIMIT $limit
 FOUNDATIONS_D3 = """
 MATCH (t:Paper {id: $target})-[:CITES*1..3]->(f:Paper)
 WHERE NOT f.id IN $already_read AND f.id <> $target
-WITH f, count(*) AS routes
+WITH f, count(*) AS walks
+WITH f, walks - size([x IN $loops WHERE x = f.id]) AS routes
 RETURN f.id AS id, f.title AS title, f.year AS year, f.citedBy AS cited_by,
        f.arxiv AS arxiv, f.doi AS doi, routes
 ORDER BY routes DESC, cited_by DESC, id
@@ -112,6 +130,7 @@ LIMIT $limit
 
 WHY_CHAINS_D2 = """
 MATCH path = (t:Paper {id: $target})-[:CITES*1..2]->(f:Paper {id: $foundation})
+WHERE """ + SIMPLE_ROUTE + """
 RETURN [n IN nodes(path) | {id: n.id, title: n.title, year: n.year}] AS chain
 ORDER BY length(path) ASC
 LIMIT 3
@@ -119,6 +138,7 @@ LIMIT 3
 
 WHY_CHAINS_D3 = """
 MATCH path = (t:Paper {id: $target})-[:CITES*1..3]->(f:Paper {id: $foundation})
+WHERE """ + SIMPLE_ROUTE + """
 RETURN [n IN nodes(path) | {id: n.id, title: n.title, year: n.year}] AS chain
 ORDER BY length(path) ASC
 LIMIT 3
@@ -126,6 +146,7 @@ LIMIT 3
 
 FOUNDATIONS = {2: FOUNDATIONS_D2, 3: FOUNDATIONS_D3}
 WHY_CHAINS = {2: WHY_CHAINS_D2, 3: WHY_CHAINS_D3}
+LOOP_WALKS = {2: None, 3: LOOP_WALKS_D3}  # 2 hops cannot loop
 
 AUTHORS_TO_FOLLOW = """
 MATCH (f:Paper)-[:BY]->(a:Author)
