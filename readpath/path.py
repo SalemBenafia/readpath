@@ -3,7 +3,7 @@
 from collections.abc import Iterable
 from typing import Any
 
-from readpath import queries
+from readpath import order, queries
 
 MAX_TITLE = 40
 
@@ -67,16 +67,33 @@ def why_text(chain: list[Row], routes: int) -> str:
     return sentence
 
 
+def edges_among(conn: Any, ids: Iterable[str]) -> list[tuple[str, str]]:
+    """Return (src, dst) CITES edges whose two ends are both in ids."""
+    ids = list(ids)
+    if not ids:
+        return []
+    return [(r["src"], r["dst"]) for r in conn.execute(queries.EDGES_AMONG, {"ids": ids})]
+
+
 def paper(conn: Any, paper_id: str) -> Row | None:
     """Return basic fields of one paper, or None if it is not in the pack."""
     rows = list(conn.execute(queries.PAPER_BY_ID, {"id": paper_id}))
     return dict(rows[0]) if rows else None
 
 
+def paper_by_title(conn: Any, title: str) -> Row | None:
+    """Return the paper whose title equals title (case-insensitive), or None."""
+    wanted = " ".join(title.split()).lower()
+    if not wanted:
+        return None
+    rows = list(conn.execute(queries.PAPER_BY_TITLE, {"title": wanted}))
+    return dict(rows[0]) if rows else None
+
+
 def reading_path(
     conn: Any, target_id: str, size: int = 6, depth: int = 3, already_read: Iterable[str] = ()
 ) -> dict[str, Any]:
-    """Build the reading path for a target: steps with their why, authors and topics."""
+    """Build the reading path for a target: steps in reading order with their why, authors and topics."""
     target = paper(conn, target_id)
     if target is None:
         raise ValueError(f"paper {target_id} is not in this pack")
@@ -86,6 +103,7 @@ def reading_path(
         why = why_text(chains[0] if chains else [], f["routes"])
         steps.append({**f, "chains": chains, "why": why})
     ids = [s["id"] for s in steps]
+    steps = order.order_papers(steps, edges_among(conn, ids))
     return {
         "target": target,
         "steps": steps,

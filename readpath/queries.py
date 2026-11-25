@@ -144,6 +144,20 @@ ORDER BY score DESC, topic
 LIMIT 5
 """
 
+PAPER_BY_TITLE = """
+MATCH (p:Paper)
+WHERE toLower(p.title) = $title
+RETURN p.id AS id, p.title AS title, p.year AS year, p.citedBy AS cited_by, p.arxiv AS arxiv
+ORDER BY cited_by DESC, id
+LIMIT 1
+"""
+
+EDGES_AMONG = """
+MATCH (a:Paper)-[:CITES]->(b:Paper)
+WHERE a.id IN $ids AND b.id IN $ids
+RETURN a.id AS src, b.id AS dst
+"""
+
 PAPER_BY_ID = """
 MATCH (p:Paper {id: $id})
 RETURN p.id AS id, p.title AS title, p.year AS year, p.citedBy AS cited_by, p.arxiv AS arxiv

@@ -133,6 +133,59 @@ def test_reading_path_structure(path_conn) -> None:
     assert result["topics"][0]["topic"] == "cs.CL"
 
 
+def test_paper_by_title_is_case_and_space_insensitive(path_conn) -> None:
+    """An exact title matches regardless of case and extra spaces; anything else does not."""
+    assert path.paper_by_title(path_conn, "  paper   F ")["id"] == "F"
+    assert path.paper_by_title(path_conn, "Paper") is None
+    assert path.paper_by_title(path_conn, "   ") is None
+
+
+def test_cli_resolve_target_prefers_exact_title(path_conn, monkeypatch) -> None:
+    """An exact title wins without running hybrid search at all."""
+    from readpath import cli
+
+    def no_search(*args: object, **kwargs: object) -> list:
+        raise AssertionError("hybrid search should not run for an exact title")
+
+    monkeypatch.setattr(cli.search, "hybrid_search", no_search)
+    target, how = cli.resolve_target(path_conn, "PAPER d")
+    assert (target["id"], how) == ("D", "title")
+
+
+def test_edges_among(path_conn) -> None:
+    """Only citations with both ends in the id set are returned."""
+    assert sorted(path.edges_among(path_conn, ["A", "D", "F", "T"])) == [
+        ("A", "D"), ("A", "F"), ("T", "A"), ("T", "F")]
+    assert path.edges_among(path_conn, []) == []
+
+
+def test_reading_path_steps_in_reading_order(path_conn) -> None:
+    """E before D (D cites E); F before A and B (they cite it); D before A (A cites D)."""
+    result = path.reading_path(path_conn, "T", size=5)
+    assert ids(result["steps"]) == ["E", "F", "D", "A", "B"]
+
+
+def test_cli_path_prints_reading_list(path_store_path, monkeypatch, capsys) -> None:
+    """The path command prints numbered steps, each with its why, and the target last."""
+    import re
+
+    from readpath import cli, store
+
+    monkeypatch.setattr(store, "pack_path", lambda name: path_store_path)
+    monkeypatch.setattr(cli, "PAPER_ID", re.compile(r"^[A-Z]$"))  # fixture ids are single letters
+    assert cli.main(["path", "T", "--pack", "paths", "--size", "2", "--read", "F"]) == 0
+    out = capsys.readouterr().out
+    # F is already read; the top 2 left are D (cited_by 30) and B (20), no edge between them -> by year.
+    numbered = [line for line in out.splitlines() if re.match(r"\s*\d+\. ", line)]
+    assert numbered == [
+        " 1. Paper D (2012)",
+        " 2. Paper B (2016)",
+        " 3. Paper T (2020)  <- your paper",
+    ]
+    assert "    Your paper -> Paper A (2015) -> this paper. Reached by 1 citation route." in out
+    assert "    Your paper cites it directly." in out
+
+
 def test_reading_path_unknown_target(path_conn) -> None:
     """A paper that is not in the pack raises ValueError."""
     with pytest.raises(ValueError):
