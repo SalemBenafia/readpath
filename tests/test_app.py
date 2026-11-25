@@ -118,7 +118,45 @@ def test_link_opens_reading_path(app: AppTest) -> None:
     assert card_titles(app)[0].startswith("#### 1. [Paper E]")
 
 
-def test_unknown_search(app: AppTest) -> None:
-    """Text that matches nothing shows a warning instead of a radio."""
+def test_unknown_search_is_friendly(app: AppTest) -> None:
+    """Text that matches nothing explains what to try, with an example title from the pack."""
     app.text_input[0].input("zzzz qqqq").run()
-    assert any("No matching paper" in w.value for w in app.warning)
+    message = next(i.value for i in app.info if "No paper in this pack matches" in i.value)
+    assert "“zzzz qqqq”" in message and "*Paper T*" in message and "6 papers" in message
+    assert not app.main.radio  # no paper to pick (the sidebar's depth radio does not count)
+
+
+def test_paper_without_citations_in_pack(app: AppTest) -> None:
+    """E cites nothing inside the pack: say so kindly, show the paper, and no graph."""
+    app.text_input[0].input("Paper E").run()
+    app.radio(key="target").set_value("E").run()
+    assert not app.exception
+    assert any("does not cite any other paper in this pack" in i.value for i in app.info)
+    assert card_titles(app) == ["#### 1. [Paper E](https://www.semanticscholar.org/paper/E) — your paper"]
+    assert not any("Citation graph" in h.value for h in app.subheader)
+
+
+def test_everything_already_read(app: AppTest) -> None:
+    """When every earlier paper is marked as read, celebrate instead of saying "no citations"."""
+    app.text_input[0].input("Paper T").run()
+    app.radio(key="target").set_value("T").run()
+    for pid in ("E", "F", "D", "A", "B"):
+        app.button(key=f"read-{pid}").click().run()
+    assert any("already read every earlier paper" in s.value for s in app.success)
+    assert not any("does not cite" in i.value for i in app.info)
+
+
+def test_empty_reading_list_message(app: AppTest) -> None:
+    """An empty "Already read" list explains what Mark as read does."""
+    assert any("Nothing here yet" in c.value and "Mark as read" in c.value for c in app.sidebar.caption)
+
+
+def test_how_it_works_and_footer(app: AppTest) -> None:
+    """The explainer lists the graph model, and the footer credits sources with the pack date."""
+    assert app.expander[0].label == "How ReadPath works"
+    explainer = "\n".join(m.value for m in app.expander[0].markdown)
+    for part in ("[:CITES]", "[:BY]", "[:ABOUT {primary}]", "Hybrid search", "Citation paths", "Reading order"):
+        assert part in explainer
+    footer = app.main.caption[-1].value
+    assert "Citation data: [Semantic Scholar]" in footer and "Abstracts: [arXiv](https://arxiv.org/) (CC0)" in footer
+    assert "Graph: Relate by Neo4j." in footer and "Pack “paths” built 2026-11-25." in footer

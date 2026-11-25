@@ -194,13 +194,14 @@ def show_graph(result: Row, pack_file: Path, mtime: float) -> None:
     st.markdown(f"**Why {md(focus_step['title'])}:** {md(focus_step['why'])}")
 
 
-def show_path(result: Row, pack_file: Path, mtime: float) -> None:
+def show_path(result: Row, pack_file: Path, mtime: float, read_all: bool = False) -> None:
     """Show the numbered reading path, the graph, then authors and topics."""
     steps = result["steps"]
     if not steps:
-        st.info("No earlier papers in this pack lead here (or you have read them all).")
-    else:
-        st.subheader(f"Read these {len(steps)} papers first, in this order")
+        no_steps(result, read_all)
+        target_card(1, result["target"])
+        return
+    st.subheader(f"Read these {len(steps)} papers first, in this order")
     for i, step in enumerate(steps, start=1):
         step_card(i, step)
     target_card(len(steps) + 1, result["target"])
@@ -219,8 +220,8 @@ def show_path(result: Row, pack_file: Path, mtime: float) -> None:
 # ---------- page ----------
 
 
-def sidebar() -> tuple[Path, int, int]:
-    """Show pack choice, path settings and the reading list; return (pack file, size, depth)."""
+def sidebar() -> tuple[Path, int, int, Row]:
+    """Show pack choice, path settings and the reading list; return (pack file, size, depth, info)."""
     st.sidebar.title("ReadPath")
     packs = store.list_packs(PACKS_DIR)
     if not packs:
@@ -237,7 +238,10 @@ def sidebar() -> tuple[Path, int, int]:
     st.sidebar.subheader("Already read")
     items = reading_list()
     if not items:
-        st.sidebar.caption("Nothing yet. Use “Mark as read” on a paper.")
+        st.sidebar.caption(
+            "Nothing here yet. Already know a paper in your path? Click **Mark as read** on it and "
+            "ReadPath will skip it and suggest the next one."
+        )
     for item in items:
         text_col, button_col = st.sidebar.columns([5, 1])
         text_col.caption(label(item))
@@ -245,26 +249,79 @@ def sidebar() -> tuple[Path, int, int]:
                           help="Remove from already read")
     if items:
         st.sidebar.button("Clear all", on_click=clear_read)
-    return pack_file, size, depth
+    return pack_file, size, depth, info
 
 
-def footer() -> None:
-    """Credit the data sources (required by the Semantic Scholar API licence)."""
+HOW_IT_WORKS = """
+**The graph** (one Relate file per topic pack, opened read-only):
+- `(:Paper)` — title, year, arXiv abstract, citation count and a 384-number embedding of title + abstract
+- `(:Paper)-[:CITES]->(:Paper)` — citation links, kept only when both papers are in the pack
+- `(:Paper)-[:BY]->(:Author)` — who wrote each paper
+- `(:Paper)-[:ABOUT {primary}]->(:Topic)` — arXiv categories such as `cs.CL`
+
+**Hybrid search.** Your words are matched by meaning (a vector index over the embeddings) and by
+exact words (a full-text index), and the two rankings are merged with reciprocal rank fusion;
+an exact title always comes first.
+
+**Citation paths.** ReadPath follows `CITES` links 2 or 3 hops back from your paper and ranks
+the earlier papers by how many citation routes lead to them.
+
+**Reading order.** The chosen papers are sorted so each one comes after the papers it cites
+(a topological sort), with older papers first when they are not linked.
+"""
+
+
+def how_it_works() -> None:
+    """Explain the graph model, hybrid search, citation paths and reading order."""
+    with st.expander("How ReadPath works"):
+        st.markdown(HOW_IT_WORKS)
+
+
+def built_date(info: Row) -> str:
+    """Return the pack's build date as YYYY-MM-DD, or "unknown"."""
+    return (info.get("built_at") or "unknown")[:10]
+
+
+def footer(info: Row) -> None:
+    """Credit the data sources (required by the Semantic Scholar API licence) and the pack date."""
     st.divider()
     st.caption(
-        "Data: [Semantic Scholar](https://www.semanticscholar.org/) (Semantic Scholar Academic Graph API) "
-        "and [arXiv](https://arxiv.org/) (metadata CC0; thank you to arXiv for use of its open access "
-        "interoperability). Built with Relate."
+        "Citation data: [Semantic Scholar](https://www.semanticscholar.org/). "
+        "Abstracts: [arXiv](https://arxiv.org/) (CC0). Graph: Relate by Neo4j. "
+        f"Pack “{info.get('name') or '?'}” built {built_date(info)}."
     )
+
+
+def no_results(text: str, info: Row) -> None:
+    """Explain that nothing matched and suggest what to try."""
+    example = (info.get("seed_titles") or ["a title from this pack"])[0]
+    st.info(
+        f"No paper in this pack matches “{md(text)}”. Try a few words from the title or abstract, "
+        f"the exact title (for example *{md(example)}*), or a Semantic Scholar paperId. "
+        f"This pack has {info.get('papers', 0)} papers; other topics need their own pack."
+    )
+
+
+def no_steps(result: Row, read_all: bool) -> None:
+    """Explain an empty reading path: everything is read, or the paper cites nothing in the pack."""
+    title = md(result["target"]["title"])
+    if read_all:
+        st.success(f"You have already read every earlier paper ReadPath found for *{title}*. "
+                   "Remove some from “Already read” in the sidebar to see them again.")
+    else:
+        st.info(f"*{title}* does not cite any other paper in this pack, so there is nothing to read "
+                "before it here. It may be one of the starting points of the field — try a newer "
+                "paper that builds on it, or a pack built around this paper.")
 
 
 def main() -> None:
     """Render the ReadPath page."""
     st.set_page_config(page_title="ReadPath", layout="wide")
-    pack_file, size, depth = sidebar()
+    pack_file, size, depth, info = sidebar()
     mtime = pack_file.stat().st_mtime
     st.title("ReadPath")
     st.caption("Find the earlier papers to read first, in order, and why each one matters.")
+    how_it_works()
     model_ok = get_embedder().available
     if not model_ok:
         st.info("Embedding model not available – using full-text search only.", icon="ℹ️")
@@ -274,7 +331,7 @@ def main() -> None:
     if text.strip():
         found = load_candidates(str(pack_file), mtime, text.strip(), model_ok)
         if not found:
-            st.warning("No matching paper in this pack.")
+            no_results(text.strip(), info)
         else:
             by_id = {c["id"]: c for c in found}
             target_id = st.radio(
@@ -285,8 +342,10 @@ def main() -> None:
                 st.query_params["paper"] = target_id  # the URL now links to this reading path
                 already = reading.ids(reading_list())
                 result = load_reading_path(str(pack_file), mtime, target_id, size, depth, already)
-                show_path(result, pack_file, mtime)
-    footer()
+                read_all = bool(already) and not result["steps"] and bool(
+                    load_reading_path(str(pack_file), mtime, target_id, size, depth, ())["steps"])
+                show_path(result, pack_file, mtime, read_all)
+    footer(info)
 
 
 main()
