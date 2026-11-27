@@ -4,7 +4,6 @@ ReadPath builds a reading path for any research paper: given a target paper, it 
 5-7 earlier papers to read first, puts them in order, and explains WHY each one matters by
 showing the citation chain. Built for the Relate by Neo4j Hackathon
 (deadline: Fri 11 Dec 2026, 6 PM PST).
-- **Video :** [[VIDEO LINK](https://youtu.be/1u6VpIFxpTY)]
 
 ## Stack
 - Python 3.10+ in a virtualenv at .venv (run `source .venv/bin/activate` first)
