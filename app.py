@@ -42,6 +42,27 @@ def load_pack_summary(pack_file: str, mtime: float) -> Row:
         conn.close()
 
 
+@st.cache_data(show_spinner=False)
+def load_suggestions(pack_file: str, mtime: float) -> list[Row]:
+    """Return the "start here" papers of a pack: seeds, then famous papers with a rich path."""
+    conn = store.open_store(pack_file, read_only=True)
+    try:
+        return path.suggested_papers(conn, limit=6)
+    finally:
+        conn.close()
+
+
+@st.cache_data(show_spinner=False)
+def load_title(pack_file: str, mtime: float, paper_id: str) -> str:
+    """Return a paper's title (used to fill the search box from a ?paper= link), or ""."""
+    conn = store.open_store(pack_file, read_only=True)
+    try:
+        found = path.paper(conn, paper_id)
+        return found["title"] if found else ""
+    finally:
+        conn.close()
+
+
 @st.cache_data(show_spinner="Searching…")
 def load_candidates(pack_file: str, mtime: float, text: str, model_ok: bool) -> list[Row]:
     """Return up to 5 candidate papers for the search text."""
@@ -194,11 +215,11 @@ def show_graph(result: Row, pack_file: Path, mtime: float) -> None:
     st.markdown(f"**Why {md(focus_step['title'])}:** {md(focus_step['why'])}")
 
 
-def show_path(result: Row, pack_file: Path, mtime: float, read_all: bool = False) -> None:
+def show_path(result: Row, pack_file: Path, mtime: float, read_all: bool, info: Row) -> None:
     """Show the numbered reading path, the graph, then authors and topics."""
     steps = result["steps"]
     if not steps:
-        no_steps(result, read_all)
+        no_steps(result, read_all, info)
         target_card(1, result["target"])
         return
     st.subheader(f"Read these {len(steps)} papers first, in this order")
@@ -302,16 +323,44 @@ def no_results(text: str, info: Row) -> None:
     )
 
 
-def no_steps(result: Row, read_all: bool) -> None:
-    """Explain an empty reading path: everything is read, or the paper cites nothing in the pack."""
+def choose(paper: Row) -> None:
+    """Open a paper's reading path: fill the search box, select it, and update the URL."""
+    st.session_state.search = paper["title"]
+    st.session_state.pop("target", None)  # let the radio pick the linked paper fresh
+    st.query_params["paper"] = paper["id"]
+
+
+def suggestions(pack_file: Path, mtime: float, key: str) -> None:
+    """Show one-click "start here" papers that have a full reading path in this pack."""
+    papers = load_suggestions(str(pack_file), mtime)
+    if not papers:
+        return
+    st.markdown("**Start here:** papers with a full reading path in this pack (one click):")
+    for col, p in zip(st.columns(3) * 2, papers):
+        col.button(label(p), key=f"{key}-{p['id']}", on_click=choose, args=(p,),
+                   help=f"Cites {p['cites']} papers in this pack", width="stretch")
+
+
+def candidate_label(c: Row) -> str:
+    """Radio label: title, year, citations, and whether it has a reading path in this pack."""
+    cites = c.get("cites") or 0
+    path_note = (f"cites {cites} paper{'s' if cites != 1 else ''} in this pack" if cites
+                 else "no reading path in this pack")
+    return f"{label(c)} · cited by {c.get('cited_by') or 0:,} · {path_note}"
+
+
+def no_steps(result: Row, read_all: bool, info: Row) -> None:
+    """Explain an empty reading path: everything is read, or the paper's references are outside the pack."""
     title = md(result["target"]["title"])
     if read_all:
         st.success(f"You have already read every earlier paper ReadPath found for *{title}*. "
                    "Remove some from “Already read” in the sidebar to see them again.")
     else:
-        st.info(f"*{title}* does not cite any other paper in this pack, so there is nothing to read "
-                "before it here. It may be one of the starting points of the field — try a newer "
-                "paper that builds on it, or a pack built around this paper.")
+        seeds = "; ".join(md(s) for s in info.get("seed_titles") or []) or "its seed papers"
+        st.info(f"None of the papers that *{title}* cites are in this pack, so there is no reading "
+                f"path for it here. A pack only reaches two citation steps back from its seed papers "
+                f"(*{seeds}*), so its oldest papers are the end of the line. Pick one of the papers "
+                "below, or a newer paper.")
 
 
 def main() -> None:
@@ -326,17 +375,22 @@ def main() -> None:
     if not model_ok:
         st.info("Embedding model not available – using full-text search only.", icon="ℹ️")
     linked = st.query_params.get("paper", "")  # ?paper=<paperId> opens that paper's path directly
-    text = st.text_input("Which paper do you want to understand?", value=linked,
+    if "search" not in st.session_state:  # first visit: a ?paper= link fills in the title
+        st.session_state.search = (load_title(str(pack_file), mtime, linked) or linked) if linked else ""
+    text = st.text_input("Which paper do you want to understand?", key="search",
                          placeholder="e.g. Attention Is All You Need")
-    if text.strip():
+    if not text.strip():
+        suggestions(pack_file, mtime, key="start")
+    else:
         found = load_candidates(str(pack_file), mtime, text.strip(), model_ok)
         if not found:
             no_results(text.strip(), info)
+            suggestions(pack_file, mtime, key="none")
         else:
             by_id = {c["id"]: c for c in found}
             target_id = st.radio(
                 "Pick the paper:", list(by_id), index=0 if linked in by_id else None, key="target",
-                format_func=lambda pid: f"{label(by_id[pid])} · cited by {by_id[pid].get('cited_by') or 0:,}",
+                format_func=lambda pid: candidate_label(by_id[pid]),
             )
             if target_id:
                 st.query_params["paper"] = target_id  # the URL now links to this reading path
@@ -344,7 +398,9 @@ def main() -> None:
                 result = load_reading_path(str(pack_file), mtime, target_id, size, depth, already)
                 read_all = bool(already) and not result["steps"] and bool(
                     load_reading_path(str(pack_file), mtime, target_id, size, depth, ())["steps"])
-                show_path(result, pack_file, mtime, read_all)
+                show_path(result, pack_file, mtime, read_all, info)
+                if not result["steps"] and not read_all:
+                    suggestions(pack_file, mtime, key="empty")
     footer(info)
 
 

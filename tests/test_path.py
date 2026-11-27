@@ -187,7 +187,7 @@ def test_find_candidates_exact_title_first(path_conn: Any, monkeypatch: pytest.M
     monkeypatch.setattr(path.search, "hybrid_search", lambda conn, text, k, embedder: hits)
     found = path.find_candidates(path_conn, "paper d", k=3)
     assert [(c["id"], c["match"]) for c in found] == [("D", "title"), ("A", "search"), ("B", "search")]
-    assert set(found[0]) == {"id", "title", "year", "cited_by", "match"}
+    assert set(found[0]) == {"id", "title", "year", "cited_by", "cites", "match"}
     assert found[0]["cited_by"] == 30
     assert path.find_candidates(path_conn, "  ") == []
 
@@ -238,3 +238,25 @@ def test_reading_path_unknown_target(path_conn: Any) -> None:
     """A paper that is not in the pack raises ValueError."""
     with pytest.raises(ValueError):
         path.reading_path(path_conn, "missing")
+
+
+def test_suggested_papers_seed_first_then_rich_paths(path_conn: Any) -> None:
+    """The seed comes first; other papers need enough citations inside the pack."""
+    rows = path.suggested_papers(path_conn, limit=5, min_cites=2)
+    assert rows[0]["id"] == "T" and rows[0]["seed"] is True
+    assert {r["id"] for r in rows} == {"T", "A"}  # A cites F and D; B, D, F cite fewer than 2
+    assert path.suggested_papers(path_conn, limit=1)[0]["id"] == "T"
+
+
+def test_cites_in_pack(path_conn: Any) -> None:
+    """Counts outgoing CITES inside the pack, including zero."""
+    assert path.cites_in_pack(path_conn, ["T", "E", "D"]) == {"T": 3, "E": 0, "D": 1}
+    assert path.cites_in_pack(path_conn, []) == {}
+
+
+def test_find_candidates_lists_papers_with_a_path_first(path_conn: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Search hits that cite nothing in the pack move after those that have a reading path."""
+    hits = [{"id": i, "title": f"Paper {i}", "year": 2000, "cited_by": 1} for i in ("E", "F", "T", "D")]
+    monkeypatch.setattr(path.search, "hybrid_search", lambda conn, text, k, embedder: hits)
+    found = path.find_candidates(path_conn, "something", k=4)
+    assert [(c["id"], c["cites"]) for c in found] == [("T", 3), ("D", 1), ("E", 0), ("F", 0)]

@@ -176,6 +176,26 @@ ORDER BY score DESC, topic
 LIMIT 5
 """
 
+# "Start here" papers: the seeds first, then well-known papers with a rich reading path.
+SUGGESTED_PAPERS = """
+MATCH (k:Pack)
+MATCH (p:Paper)-[c:CITES]->(:Paper)
+WITH k, p, count(c) AS cites
+WHERE cites >= $min_cites OR p.id IN k.seeds
+RETURN p.id AS id, p.title AS title, p.year AS year, p.citedBy AS cited_by, cites,
+       p.id IN k.seeds AS seed
+ORDER BY seed DESC, cited_by DESC, id
+LIMIT $limit
+"""
+
+# How many papers inside the pack each paper cites (0 means no reading path here).
+CITES_IN_PACK = """
+MATCH (p:Paper)
+WHERE p.id IN $ids
+OPTIONAL MATCH (p)-[c:CITES]->(:Paper)
+RETURN p.id AS id, count(c) AS cites
+"""
+
 PAPER_BY_TITLE = """
 MATCH (p:Paper)
 WHERE toLower(p.title) = $title

@@ -89,7 +89,8 @@ make run
 - `make run` prints `Local URL: http://localhost:8501`. Open that address in your browser.
 - The first start downloads the small embedding model (about 90 MB, once), so it takes a little longer. Without internet, search still works using full-text only.
 - In the browser, the sidebar shows the pack (**gnn** is selected first; switch to **transformers**), its paper count and seeds, a "papers in path" slider and a "depth" choice.
-- Type `Attention Is All You Need` (in the transformers pack) and pick the first option. You get 6 numbered cards, from *Long Short-Term Memory (1997)* to *Neural Machine Translation by Jointly Learning to Align and Translate (2014)*, each with one sentence on **why**, then the citation graph. In "Show why for…", choose a paper to highlight its citation chains.
+- No searching needed: under **Start here**, one click on a suggested paper (the pack's seed papers come first) opens its reading path. Search results also say whether each paper has a reading path in the pack ("cites 39 papers in this pack" or "no reading path in this pack").
+- Or type `Attention Is All You Need` (in the transformers pack) and pick the first option. You get 6 numbered cards, from *Long Short-Term Memory (1997)* to *Neural Machine Translation by Jointly Learning to Align and Translate (2014)*, each with one sentence on **why**, then the citation graph. In "Show why for…", choose a paper to highlight its citation chains.
 - Shortcut: http://localhost:8501/?paper=204e3073870fae3d05bcbc2f6a8e263d9b72e776 opens that reading path directly.
 
 Press `Ctrl+C` in the terminal to stop the app. The same reading path from the terminal:

@@ -111,11 +111,36 @@ def test_graph_view_and_focus(app: AppTest) -> None:
 
 
 def test_link_opens_reading_path(app: AppTest) -> None:
-    """?paper=<id> pre-fills the search and selects that paper."""
-    app.query_params["paper"] = "T"
-    app.run()
+    """A fresh visit to ?paper=<id> fills the search box with the title and opens that path."""
+    visit = AppTest.from_file(APP, default_timeout=30)
+    visit.query_params["paper"] = "T"
+    visit.run()
+    assert visit.text_input(key="search").value == "Paper T"
+    assert visit.radio(key="target").value == "T"
+    assert card_titles(visit)[0].startswith("#### 1. [Paper E]")
+
+
+def test_start_here_suggestions_open_a_path(app: AppTest) -> None:
+    """With an empty search box, one click on a suggested paper shows its reading path."""
+    buttons = [b for b in app.button if b.key and b.key.startswith("start-")]
+    assert [b.label for b in buttons][0] == "Paper T (2020)"  # the seed comes first
+    buttons[0].click().run()
+    assert not app.exception
+    assert app.text_input(key="search").value == "Paper T"
     assert app.radio(key="target").value == "T"
     assert card_titles(app)[0].startswith("#### 1. [Paper E]")
+    assert app.query_params["paper"] == "T"
+
+
+def test_candidates_say_whether_they_have_a_path(app: AppTest) -> None:
+    """Search results show how many pack papers each one cites, or that it has no path."""
+    app.text_input[0].input("Paper").run()
+    labels = app.radio(key="target").options
+    assert labels[0] == "Paper A (2015) · cited by 10 · cites 2 papers in this pack"  # A cites F and D
+    assert any(o.endswith("cites 1 paper in this pack") for o in labels)  # B cites only F
+    assert any("no reading path in this pack" in o for o in labels)  # E cites nothing
+    has_path = ["no reading path" not in o for o in labels]
+    assert has_path == sorted(has_path, reverse=True)  # papers with a path are listed first
 
 
 def test_unknown_search_is_friendly(app: AppTest) -> None:
@@ -131,9 +156,11 @@ def test_paper_without_citations_in_pack(app: AppTest) -> None:
     app.text_input[0].input("Paper E").run()
     app.radio(key="target").set_value("E").run()
     assert not app.exception
-    assert any("does not cite any other paper in this pack" in i.value for i in app.info)
+    message = next(i.value for i in app.info if "no reading path for it here" in i.value)
+    assert "two citation steps back" in message and "*Paper T*" in message  # names the seed
     assert card_titles(app) == ["#### 1. [Paper E](https://www.semanticscholar.org/paper/E) — your paper"]
     assert not any("Citation graph" in h.value for h in app.subheader)
+    assert any(b.key and b.key.startswith("empty-") for b in app.button)  # suggestions to move on
 
 
 def test_everything_already_read(app: AppTest) -> None:

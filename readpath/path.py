@@ -128,8 +128,22 @@ def find_paper(conn: Any, text: str, embedder: Any = None) -> tuple[Row | None, 
     return (paper(conn, hits[0]["id"]) if hits else None), "search"
 
 
+def suggested_papers(conn: Any, limit: int = 6, min_cites: int = 15) -> list[Row]:
+    """Return "start here" papers: the pack's seeds, then famous papers with a rich reading path."""
+    rows = conn.execute(queries.SUGGESTED_PAPERS, {"limit": limit, "min_cites": min_cites})
+    return [dict(r) for r in rows]
+
+
+def cites_in_pack(conn: Any, ids: Iterable[str]) -> dict[str, int]:
+    """Return how many pack papers each paper cites (0 means no reading path in this pack)."""
+    ids = list(ids)
+    if not ids:
+        return {}
+    return {r["id"]: r["cites"] for r in conn.execute(queries.CITES_IN_PACK, {"ids": ids})}
+
+
 def find_candidates(conn: Any, text: str, k: int = 5, embedder: Any = None) -> list[Row]:
-    """Return up to k candidate targets: paperId or exact title first, then hybrid-search hits."""
+    """Return up to k candidates: paperId or exact title first, then search hits that have a path first."""
     text = text.strip()
     if not text:
         return []
@@ -137,10 +151,14 @@ def find_candidates(conn: Any, text: str, k: int = 5, embedder: Any = None) -> l
     found: list[Row] = []
     if first is not None:
         found.append({**_candidate(first), "match": "paperId" if PAPER_ID.match(text) else "title"})
-    for hit in search.hybrid_search(conn, text, k=k, embedder=embedder):
-        if all(hit["id"] != f["id"] for f in found):
-            found.append({**_candidate(hit), "match": "search"})
-    return found[:k]
+    hits = [h for h in search.hybrid_search(conn, text, k=k, embedder=embedder)
+            if all(h["id"] != f["id"] for f in found)]
+    found += [{**_candidate(h), "match": "search"} for h in hits]
+    cites = cites_in_pack(conn, [f["id"] for f in found])
+    found = [{**f, "cites": cites.get(f["id"], 0)} for f in found]
+    exact, rest = found[: 1 if first else 0], found[1 if first else 0 :]
+    rest.sort(key=lambda f: f["cites"] == 0)  # stable: papers with a reading path first
+    return (exact + rest)[:k]
 
 
 def _candidate(row: Row) -> Row:
