@@ -4,7 +4,7 @@
 
 Demo video: _link coming soon_
 
-![ReadPath app: a reading path for "Attention Is All You Need" with its citation graph](docs/screenshot.png)
+![ReadPath app: the reading path for "Adam: A Method for Stochastic Optimization" in the gnn pack, with search results that say which papers have a reading path](docs/screenshot.png)
 
 Built on [Relate](https://relatedb.ai), the embedded graph database, for the Relate by Neo4j Hackathon.
 
@@ -92,6 +92,14 @@ make run
 - No searching needed: under **Start here**, one click on a suggested paper (the pack's seed papers come first) opens its reading path. Search results also say whether each paper has a reading path in the pack ("cites 39 papers in this pack" or "no reading path in this pack").
 - Or type `Attention Is All You Need` (in the transformers pack) and pick the first option. You get 6 numbered cards, from *Long Short-Term Memory (1997)* to *Neural Machine Translation by Jointly Learning to Align and Translate (2014)*, each with one sentence on **why**, then the citation graph. In "Show why for…", choose a paper to highlight its citation chains.
 - Shortcut: http://localhost:8501/?paper=204e3073870fae3d05bcbc2f6a8e263d9b72e776 opens that reading path directly.
+
+The start page, with one-click **Start here** papers:
+
+![Start page: one-click "Start here" papers that have a full reading path in the pack](docs/screenshot-start.png)
+
+The citation graph under the reading path. "Show why for…" highlights the chosen paper's citation chains in pink; your paper is the navy node on the right:
+
+![Citation graph: the chains from "Adam" back to "Learning representations by back-propagating errors" (1986) highlighted in pink](docs/screenshot-graph.png)
 
 Press `Ctrl+C` in the terminal to stop the app. The same reading path from the terminal:
 
@@ -206,7 +214,7 @@ The tests need no network, no API key and no model download. They build tiny pac
 - **Mistakes Claude Code made and fixed itself:** a few tests had wrong expected values, and one bulk edit broke a test file before it was committed.
 - **Limits:**
   - Claude Code could not use a real browser in this setup, so the app was tested with Streamlit's `AppTest` and timed on the server side.
-  - The screenshot in this README was taken by hand.
+  - The screenshots in this README are frames from my own screen recording of the app.
   - [docs/graph-model.png](docs/graph-model.png) was drawn by Claude Code as an SVG, not in arrows.app. The arrows.app import file is provided.
 
 ## 12. Data credits and licences
