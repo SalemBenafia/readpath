@@ -2,7 +2,7 @@
 
 **Give it any research paper and get the 5–7 earlier papers to read first, in order, with the citation chain that explains why each one matters.**
 
- - **Demo Video :** [[VIDEO LINK](https://youtu.be/1u6VpIFxpTY)]
+ - **Demo Video :** [[VIDEO LINK](https://youtu.be/_SCU0NoptfQ)]
 
 
 ![ReadPath app: the reading path for "Adam: A Method for Stochastic Optimization" in the gnn pack, with search results that say which papers have a reading path](docs/screenshot.png)
